@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+TOOLCHAIN="$ROOT/.toolchain"
+VERSION=$(sed -n 's/^channel = "\(.*\)"/\1/p' "$ROOT/rust-toolchain.toml")
+URL="https://static.rust-lang.org/rustup/dist/$(uname -m)-unknown-linux-gnu/rustup-init"
+
+export RUSTUP_HOME="$TOOLCHAIN/rustup"
+export CARGO_HOME="$TOOLCHAIN/cargo"
+export TMPDIR="$TOOLCHAIN/tmp"
+mkdir -p "$TMPDIR"
+
+cd "$TOOLCHAIN"
+curl --proto '=https' --tlsv1.2 -fsSL -o rustup-init "$URL"
+curl --proto '=https' --tlsv1.2 -fsSL -o rustup-init.sha256 "$URL.sha256"
+sha256sum --check --quiet rustup-init.sha256
+chmod +x rustup-init
+
+./rustup-init -y --no-modify-path --profile minimal \
+  --default-toolchain "$VERSION" -c clippy -c rustfmt
+
+rm rustup-init rustup-init.sha256
+"$ROOT/cargo" --version

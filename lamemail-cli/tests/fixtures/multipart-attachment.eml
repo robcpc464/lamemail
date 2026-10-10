@@ -1,0 +1,31 @@
+From: Jane Doe <jane@example.com>
+To: me@example.com
+Subject: =?utf-8?q?Angebot_f=C3=BCr_Projekt?=
+Date: Tue, 15 Sep 2026 14:32:00 +0200
+Message-ID: <attach@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=utf-8
+
+Text version.
+
+--inner
+Content-Type: text/html; charset=utf-8
+
+<p>HTML version.</p>
+
+--inner--
+
+--outer
+Content-Type: application/pdf; name="offer.pdf"
+Content-Disposition: attachment; filename="offer.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrZQ==
+
+--outer--

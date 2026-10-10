@@ -1,0 +1,7 @@
+From: Max <max@example.com>
+To: me@example.com
+Subject: Grüße
+Date: Tue, 15 Sep 2026 14:32:00 +0200
+Content-Type: text/plain; charset=utf-8
+
+Grüße aus München, declared utf-8 but sent as latin1.

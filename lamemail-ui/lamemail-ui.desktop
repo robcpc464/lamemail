@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=lamemail
+Comment=One feed of all your mail
+Exec=lamemail-ui
+Icon=lamemail
+Terminal=false
+Categories=Network;Email;
+StartupWMClass=lamemail-ui

@@ -1,0 +1,15 @@
+From: News <news@example.com>
+To: me@example.com
+Subject: =?utf-8?q?Newsletter_September?=
+Date: Tue, 15 Sep 2026 09:00:00 +0000
+Message-ID: <news-2026-09@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><body style=3D"font-family:sans-serif">
+<h1>Newsletter</h1>
+<p>Hello reader,<br>this is the <b>September</b> issue.</p>
+<p><a href=3D"https://example.com/more">Read more</a></p>
+<img src=3D"https://example.com/pixel.gif" width=3D"1" height=3D"1">
+</body></html>

@@ -1,0 +1,10 @@
+QT += quick quickcontrols2 network dbus
+CONFIG += c++20 warn_on
+QMAKE_CXXFLAGS_WARN_ON += -Werror -Wno-sfinae-incomplete
+INCLUDEPATH += $$PWD/src
+HEADERS += $$files($$PWD/src/*.h)
+SOURCES += $$files($$PWD/src/*.cpp)
+icon.files = $$PWD/lamemail.svg
+icon.base = $$PWD
+icon.prefix = /
+RESOURCES += icon

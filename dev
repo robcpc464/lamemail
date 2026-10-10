@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MAIL="$ROOT/testdata/mail"
+SERVER="$ROOT/testdata/server"
+CLI="$ROOT/lamemail-cli"
+UI_DIR="$ROOT/lamemail-ui"
+OUT="$UI_DIR/build"
+UI="$UI_DIR/build/app/lamemail-ui"
+DRIVE="$UI_DIR/build/drive/lamemail-ui-drive"
+CLASS=lamemail-ui
+BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+APPS="$DATA/applications"
+ICONS="$DATA/icons/hicolor/scalable/apps"
+DIST="$ROOT/dist"
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+geometry() {
+  hyprctl clients -j | jq -er --arg class "$CLASS" \
+    'first(.[] | select(.class == $class)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+}
+
+build_ui() {
+  mkdir -p "$UI_DIR/build"
+  (cd "$UI_DIR/build" && qmake6 -r ../lamemail-ui.pro && make -j"$(nproc)" --no-print-directory -s)
+}
+
+cmd_build() {
+  (cd "$CLI" && ./cargo build --release)
+  build_ui
+}
+
+lint_qml() {
+  local module="$UI_DIR/build/lint/Lamemail"
+  mkdir -p "$module"
+  cp "$UI_DIR/build/app/lamemail-ui.qmltypes" "$module/"
+  printf 'module Lamemail\ntypeinfo lamemail-ui.qmltypes\ndepends QtQuick\n' >"$module/qmldir"
+  "$(qmake6 -query QT_INSTALL_BINS)/qmllint" -W 0 -I "$UI_DIR/build/lint" "$UI_DIR"/qml/*.qml
+}
+
+cmd_check() {
+  (cd "$CLI" && ./cargo fmt --check && ./cargo clippy --all-targets -- -D warnings \
+    && ./cargo test --quiet && ./cargo build --release)
+  find "$UI_DIR/src" "$UI_DIR/app" "$UI_DIR/tests" "$UI_DIR/drive" -name '*.h' -o -name '*.cpp' \
+    | xargs clang-format --dry-run -Werror
+  build_ui
+  "$UI_DIR/build/tests/tst_lamemail" -silent
+  lint_qml
+  cmd_drive
+}
+
+cmd_drive() {
+  [[ -x $DRIVE ]] || die "no build at $DRIVE, run ./dev build"
+  [[ -d $MAIL && -d $SERVER ]] || die "no test data, run ./dev mail"
+  rm -rf "$OUT/captures"
+  mkdir -p "$OUT/captures"
+  cp -a "$MAIL" "$OUT/captures/mail"
+  cp -a "$SERVER" "$OUT/captures/server"
+  PATH="$CLI/target/release:$PATH" LAMEMAIL_DEV="$OUT/captures/server" \
+    "$DRIVE" --dir "$OUT/captures/mail" --out "$OUT/captures" "$@"
+}
+
+cmd_mail() {
+  (cd "$CLI" && ./cargo build --release --quiet)
+  local lamemail="$CLI/target/release/lamemail" account
+  "$CLI/tools/dev-mail" "$SERVER"
+  rm -rf "$MAIL"
+  "$lamemail" --dir "$MAIL" init >/dev/null
+  for account in private:robin@lamemail.com business:business@lamemail.com; do
+    "$lamemail" --dir "$MAIL" --dev "$SERVER" account add "${account%%:*}" \
+      --host imap.example.com --smtp-host smtp.example.com --user "${account#*:}" >/dev/null
+  done
+  printf 'Robin\nlamemail.com\n' | "$lamemail" --dir "$MAIL" account signature private >/dev/null
+  "$lamemail" --dir "$MAIL" account archive private --by-year false >/dev/null
+  "$lamemail" --dir "$MAIL" --dev "$SERVER" sync >/dev/null
+  echo "$("$lamemail" --dir "$MAIL" list --json | wc -l) messages synced into $MAIL"
+}
+
+cmd_install() {
+  cmd_build
+  install -Dm755 "$CLI/target/release/lamemail" "$BIN/lamemail"
+  install -Dm755 "$UI" "$BIN/lamemail-ui"
+  install -Dm644 "$UI_DIR/lamemail-ui.desktop" "$APPS/lamemail-ui.desktop"
+  install -Dm644 "$UI_DIR/lamemail.svg" "$ICONS/lamemail.svg"
+  echo "installed lamemail and lamemail-ui into $BIN, the menu entry into $APPS, the icon into $ICONS"
+}
+
+cmd_uninstall() {
+  rm -f "$BIN/lamemail" "$BIN/lamemail-ui" "$APPS/lamemail-ui.desktop" "$ICONS/lamemail.svg"
+  echo "removed lamemail and lamemail-ui from $BIN, the menu entry from $APPS and the icon from $ICONS"
+  echo "kept: the sync folder (~/.lamemail), the keyring passwords and ~/.config/lamemail"
+}
+
+license_files() {
+  find "$1" -maxdepth 1 -type f \( -iname 'licen[sc]e*' -o -iname 'copying*' -o -iname 'notice*' \
+    -o -iname 'copyright*' -o -iname 'unlicense*' \) | sort
+  [[ ! -d $1/LICENSES ]] || find "$1/LICENSES" -maxdepth 1 -type f | sort
+}
+
+license_text() {
+  printf '\n--- %s ---\n\n' "${1##*/}"
+  cat "$1"
+}
+
+third_party_licenses() {
+  local registry="$CLI/.toolchain/cargo/registry/src" rust="$1" package license repository crate version file
+  local -a source
+  cat <<'EOF'
+The lamemail binary contains the libraries below. Each is listed with its
+licence, where it comes from and the licence texts its package holds. The
+Rust standard library closes the list with the texts of MIT and Apache-2.0.
+EOF
+  (cd "$CLI" && ./cargo tree --locked --edges normal --prefix none --format '{p}|{l}|{r}') \
+    | sed 's/ (\*)$//' | sort -u | while IFS='|' read -r package license repository; do
+    crate=${package%% *}
+    [[ $crate != lamemail ]] || continue
+    version=${package#* v}
+    version=${version%% *}
+    source=("$registry"/*/"$crate-$version")
+    [[ -d ${source[0]} ]] || die "no source of $crate $version in $registry"
+    printf '\n\n%s %s\n%s\n%s\n' "$crate" "$version" "$license" "$repository"
+    license_files "${source[0]}" | while read -r file; do
+      license_text "$file"
+    done
+  done
+  printf '\n\nThe Rust standard library\nMIT OR Apache-2.0\nhttps://github.com/rust-lang/rust\n'
+  license_text "$rust/licenses/MIT.txt"
+  license_text "$rust/licenses/Apache-2.0.txt"
+}
+
+cmd_release() {
+  cmd_build
+  local name stage licenses
+  local -a rust=("$CLI"/.toolchain/rustup/toolchains/*/share/doc/rust)
+  name="lamemail-$(uname -m)-linux"
+  stage="$DIST/$name"
+  licenses="$stage/share/licenses/lamemail"
+  rm -rf "$DIST"
+  install -Dm755 "$CLI/target/release/lamemail" "$stage/bin/lamemail"
+  install -Dm755 -s "$UI" "$stage/bin/lamemail-ui"
+  install -Dm644 "$UI_DIR/lamemail-ui.desktop" "$stage/share/applications/lamemail-ui.desktop"
+  install -Dm644 "$UI_DIR/lamemail.svg" "$stage/share/icons/hicolor/scalable/apps/lamemail.svg"
+  install -Dm644 "$ROOT/LICENSE" "$licenses/LICENSE"
+  install -Dm644 "$UI_DIR/LICENSE-lucide" "$licenses/LICENSE-lucide"
+  install -Dm644 "${rust[0]}/COPYRIGHT-library.html" "$licenses/COPYRIGHT-rust-library.html"
+  third_party_licenses "${rust[0]}" >"$licenses/THIRD-PARTY-LICENSES"
+  tar -C "$DIST" --sort=name --owner=0 --group=0 --numeric-owner -czf "$DIST/$name.tar.gz" "$name"
+  rm -rf "$stage"
+  (cd "$DIST" && sha256sum "$name.tar.gz" >"$name.tar.gz.sha256")
+  echo "packed $("$CLI/target/release/lamemail" --version) into $DIST/$name.tar.gz, its checksum beside it"
+}
+
+cmd_ui() {
+  [[ -x $UI ]] || die "no UI build at $UI, run ./dev build"
+  pkill -x "$CLASS" || true
+  for _ in $(seq 30); do
+    geometry >/dev/null || break
+    sleep 0.1
+  done
+  mkdir -p "$OUT"
+  PATH="$CLI/target/release:$PATH" LAMEMAIL_DEV="$SERVER" QT_FORCE_STDERR_LOGGING=1 \
+    setsid -f "$UI" --dir "$MAIL" >"$OUT/ui.log" 2>&1
+  for _ in $(seq 50); do
+    geometry >/dev/null && return
+    sleep 0.1
+  done
+  die "$CLASS did not open a window, see lamemail-ui/build/ui.log"
+}
+
+usage() {
+  cat <<'EOF'
+usage: ./dev <command>
+
+  build                build lamemail-cli (release) and lamemail-ui
+  check                everything that must be clean before handing back: format, lints, tests, builds, qmllint,
+                       the UI loading without a QML error
+  mail                 regenerate testdata/server/, then init, add the accounts and sync into testdata/mail/ with lamemail --dev
+  install              build, then install lamemail and lamemail-ui into ~/.local/bin, the menu entry into
+                       ~/.local/share/applications and the icon into ~/.local/share/icons/hicolor/scalable/apps
+  uninstall            remove what install put there; mail, passwords and UI settings stay
+  release              build, then pack both programs, the menu entry, the icon and the licences of everything
+                       in them into dist/lamemail-<architecture>-linux.tar.gz, with its checksum, for install.sh
+  drive <step>...      run the UI without a display on a fresh copy of testdata/, so ./dev ui keeps its data,
+                       one step per argument, captures in
+                       lamemail-ui/build/captures/: size <w> <h>, click <x> <y> [ctrl|right], move <x> <y>,
+                       drag <x> <y> <x2> <y2>, wheel <x> <y> <notches>, key <sequence>, type <text>,
+                       wait <ms>, shot <name>
+  ui                   start the UI on testdata/mail/ and leave it running, log in lamemail-ui/build/ui.log
+EOF
+}
+
+cmd=${1:-help}
+shift || true
+case $cmd in
+  build) cmd_build ;;
+  check) cmd_check ;;
+  mail) cmd_mail ;;
+  install) cmd_install ;;
+  uninstall) cmd_uninstall ;;
+  release) cmd_release ;;
+  drive) cmd_drive "$@" ;;
+  ui) cmd_ui ;;
+  help | -h | --help) usage ;;
+  *) usage >&2; exit 1 ;;
+esac

@@ -1,0 +1,562 @@
+#!/usr/bin/env python3
+import datetime
+import email.message
+import email.policy
+import email.utils
+import html
+import os
+import shutil
+import struct
+import sys
+import zlib
+
+if len(sys.argv) != 2:
+    sys.exit("usage: dev-mail <development server>")
+SERVER = sys.argv[1]
+UIDVALIDITY = 1694771234
+NOW = datetime.datetime.now().astimezone().replace(second=5, microsecond=0)
+ACCOUNTS = {
+    "private": {
+        "address": "robin@lamemail.com",
+        "folders": {
+            "inbox": "INBOX",
+            "inbox/archive/2025": "INBOX/Archive/2025",
+            "sent": "Sent",
+            "drafts": "Drafts",
+            "spam": "Spam",
+            "trash": "Trash",
+            "[gmail]/all mail": "[Gmail]/All Mail",
+        },
+        "marks": {"sent": "sent", "drafts": "drafts", "spam": "junk", "trash": "trash", "[gmail]/all mail": "all"},
+    },
+    "business": {
+        "address": "business@lamemail.com",
+        "folders": {
+            "inbox": "INBOX",
+            "gesendet": "Gesendet",
+            "entwürfe": "Entw&APw-rfe",
+            "spamverdacht": "Spamverdacht",
+            "papierkorb": "Papierkorb",
+            "archiv": "Archiv",
+        },
+        "marks": {"gesendet": "sent", "entwürfe": "drafts", "spamverdacht": "junk", "papierkorb": "trash", "archiv": "archive"},
+    },
+}
+PEOPLE = {
+    "me": ("Robin", None, "de", ""),
+    "post": ("Robin", "post@lamemail.com", "de", ""),
+    "paul": ("Paul Berger", "paul.berger@example.com", "de", "-- \nPaul Berger\nBerger & Söhne GmbH\nTel. +49 89 000000\n"),
+    "maria": ("Maria Vogel", "maria.vogel@example.com", "de", ""),
+    "jane": ("Jane Doe", "jane@example.com", "en", "-- \nSent from my phone\n"),
+    "peter": ("Peter Pan", "peter.pan@example.com", "en", ""),
+    "anna": ("Müller, Anna", "anna.mueller@example.com", "de", "--\nAnna Müller\nBuchhaltung\n"),
+    "lena": ("Lena Fischer", "lena@example.com", "de", ""),
+    "tom": ("Tom Baker", "tom.baker@example.com", "en", ""),
+    "sophie": ("Sophie Brandt", "sophie.brandt@example.com", "de", ""),
+    "oliver": ("Oliver Wright", "oliver.wright@example.com", "en", "--\nOliver Wright\nHead of Finance\n"),
+    "emma": ("Emma Clarke", "emma.clarke@example.com", "en", ""),
+    "max": ("Max Mustermann", "max@example.com", "de", ""),
+    "shop": ("Shop Newsletter", "newsletter@shop.example.com", "en", ""),
+    "github": ("GitHub", "noreply@github.example.com", "en", ""),
+    "billing": (None, "billing@cloud.example.com", "en", ""),
+    "calendar": ("Team Kalender", "calendar@example.com", "de", ""),
+    "jira": ("Jira", "jira@example.com", "en", ""),
+    "ci": ("CI", "ci@example.com", "en", ""),
+    "team": ("Team Lamemail", "team@example.com", "en", ""),
+    "hr": ("People Team", "hr@example.com", "en", ""),
+    "prize": ("Lucky Draw", "prize@spam.example.com", "en", ""),
+    "pharma": (None, "offers@pills.example.net", "en", ""),
+    "bank": ("Secure Bank", "alert@secure-bank.example.net", "en", ""),
+}
+PDF = ("offer.pdf", "application/pdf", 120394)
+INVOICE = ("invoice-2026-09.pdf", "application/pdf", 84210)
+SHEET = ("budget-q4.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 45012)
+SLIDES = ("sprint-review.pdf", "application/pdf", 2311004)
+PHOTO = ("IMG_2041.jpg", "image/jpeg", 3410077)
+CONTRACT = ("vertrag-entwurf.pdf", "application/pdf", 199302)
+
+
+def pdf(lines):
+    shown = " ".join("(" + line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") + ") '" for line in lines)
+    text = f"BT /F1 16 Tf 24 TL 72 770 Td {shown} ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        f"<< /Length {len(text.encode('cp1252'))} >>\nstream\n{text}\nendstream",
+    ]
+    out = b"%PDF-1.4\n"
+    offsets = []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n{body}\nendobj\n".encode("cp1252")
+    start = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += "".join(f"{offset:010d} 00000 n \n" for offset in offsets).encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
+    return out
+
+
+def png(width, height, background, rects):
+    rows = [bytearray(bytes(background) * width) for _ in range(height)]
+    for (left, top, right, bottom), color in rects:
+        for row in rows[top:bottom]:
+            row[left * 3:right * 3] = bytes(color) * (right - left)
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    pixels = zlib.compress(b"".join(b"\0" + bytes(row) for row in rows), 9)
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
+
+
+RELEASE_PLAN = ("release-plan-oktober.pdf", "application/pdf", pdf([
+    "Release-Planung Oktober",
+    "",
+    "Montag: Import einfrieren",
+    "Mittwoch: Suche einfrieren, Demo-Probe",
+    "Freitag: Release (vorher Backup der Datenbank)",
+    "",
+    "Release-Notes: Maria, Änderungen bis Donnerstag",
+]))
+RELEASE_BUDGET = ("budget-oktober.csv", "text/csv", b"Posten;Plan;Ist\nImport;4200;3980\nSuche;2600;2750\nDemo;800;0\nReserve;1500;1500\nSumme;9100;8230\n")
+WHITEBOARD = ("whiteboard.png", "image/png", png(640, 400, (246, 246, 242), [
+    ((60, 238, 580, 243), (40, 70, 140)),
+    ((100, 228, 104, 253), (40, 70, 140)),
+    ((318, 228, 322, 253), (40, 70, 140)),
+    ((536, 228, 540, 253), (40, 70, 140)),
+    ((52, 90, 172, 190), (255, 221, 87)),
+    ((262, 70, 382, 170), (255, 158, 181)),
+    ((480, 100, 600, 200), (152, 222, 140)),
+    ((262, 280, 382, 360), (140, 196, 255)),
+    ((70, 120, 150, 126), (90, 80, 40)),
+    ((70, 140, 140, 146), (90, 80, 40)),
+    ((280, 100, 360, 106), (110, 50, 70)),
+    ((498, 130, 580, 136), (50, 90, 50)),
+    ((498, 150, 560, 156), (50, 90, 50)),
+    ((280, 310, 350, 316), (40, 70, 120)),
+]))
+LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+MINUTES = """Hallo Robin,
+
+wie besprochen das Protokoll von Dienstag. Bitte bis Freitag Rückmeldung, dann geht es an alle.
+
+Teilnehmer: Paul Berger, Maria Vogel, Robin
+Ort: Raum Berlin, 10:00 bis 11:30
+
+1. Stand Import
+
+Der Import läuft seit zwei Wochen stabil, die Fehlerquote liegt unter einem Prozent. Die verbleibenden Fehler
+betreffen fast nur Dateien mit fehlendem Zeichensatz, dafür gibt es seit Montag einen Fallback. Offen bleibt
+die Behandlung von Anhängen über 50 MB, die bislang übersprungen werden. Maria schätzt den Aufwand für eine
+Lösung auf zwei Tage.
+
+Entscheidung: Anhänge über 50 MB bleiben vorerst außen vor, wir dokumentieren die Grenze.
+
+2. Suche
+
+Die Suche ist in der Demo angekommen, aber noch ohne Index. Bei 20.000 Nachrichten dauert eine Abfrage
+zwischen einer und drei Sekunden, was für die Vorführung reicht, für den Alltag aber nicht. Robin schlägt
+vor, den Index beim Sync mitzuschreiben, statt ihn beim Start aufzubauen.
+
+Entscheidung: Index beim Sync. Robin bereitet bis zum nächsten Treffen einen Vorschlag vor, wie der Index
+im Sync-Ordner abgelegt wird, ohne die Regel zu verletzen, dass das Verzeichnis der einzige Zustand ist.
+
+3. Sprint Review
+
+Reihenfolge der Demo: Import, Suche, Abschluss. Maria moderiert, Paul zeigt den Import, Robin die Suche.
+Die Folien sind eingefroren, Folie 4 hat den neuen Screenshot. Die Vorführung dauert höchstens 25 Minuten,
+danach 20 Minuten Fragen.
+
+4. Budget Q4
+
+Die Zahlen aus dem Budget-Meeting stimmen mit denen aus dem Sprint Review nicht überein, weil im Budget die
+CI-Kosten pro Quartal, im Review aber pro Jahr angesetzt wurden. Paul gleicht die beiden Tabellen ab und
+schickt die korrigierte Version an Oliver.
+
+Entscheidung: Es gilt die Quartalszahl. Paul korrigiert bis Donnerstag.
+
+5. Verschiedenes
+
+- Der Raum Berlin ist ab Oktober nur noch vormittags buchbar, Nachmittagstermine bitte in Raum Hamburg.
+- Maria ist vom 12. bis 23. Oktober im Urlaub, Vertretung übernimmt Paul.
+- Das Sommerfest-Foto hängt jetzt im Flur, wer es noch nicht gesehen hat: zweite Tür links.
+- Die neue Kaffeemaschine kommt nächste Woche, die alte geht an das Team im dritten Stock.
+- Für das Kickoff im November brauchen wir noch einen Termin, Doodle folgt.
+
+Aufgaben:
+
+- Maria: Grenze für Anhänge dokumentieren, bis Freitag
+- Robin: Vorschlag Index beim Sync, bis zum nächsten Treffen
+- Paul: Budget-Tabellen abgleichen und an Oliver schicken, bis Donnerstag
+- Paul: Doodle für das Kickoff, bis Ende der Woche
+- alle: Rückmeldung zum Protokoll, bis Freitag
+
+Nächstes Treffen: Dienstag in zwei Wochen, 10:00, Raum Berlin.
+
+Viele Grüße
+Paul
+"""
+NEWSLETTER = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>10 things you missed</title>
+<style>body { margin: 0 } .button { background: #222; color: #fff; padding: 12px 24px }</style></head>
+<body>
+<div style="display:none; max-height:0; overflow:hidden">Free shipping until Sunday, the autumn collection and more
+&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" role="presentation">
+<tr>
+<td><a href="https://shop.example.com/?utm_source=newsletter"><img src="https://shop.example.com/logo.png" alt="Example Shop" width="160"></a></td>
+<td align="right"><a href="https://shop.example.com/view/2026-39">View in browser</a></td>
+</tr>
+<tr><td colspan="2">
+<h1>10 things you missed</h1>
+<p>Hello Robin,</p>
+<p>this week: the new <b>autumn collection</b>, free shipping until Sunday and a look behind the scenes
+of our workshop. <a href="https://shop.example.com/autumn?utm_source=newsletter">See the collection</a></p>
+</td></tr>
+<tr><td colspan="2"><table width="100%" role="presentation">
+<tr><th align="left">Item</th><th align="right">Price</th></tr>
+<tr><td>Wool scarf</td><td align="right">29,00&nbsp;€</td></tr>
+<tr><td>Rain jacket</td><td align="right">119,00&nbsp;€</td></tr>
+<tr><td>Canvas bag</td><td align="right">24,00&nbsp;€</td></tr>
+</table></td></tr>
+<tr><td colspan="2">
+<p>Why it is worth a look:</p>
+<ul><li>Free shipping until Sunday</li><li>Returns within 30 days<ul><li>also for sale items</li></ul></li><li>Gift wrapping on request</li></ul>
+</td></tr>
+<tr><td colspan="2" align="center" style="padding:24px"><a class="button" href="https://shop.example.com/sale?utm_source=newsletter&amp;utm_medium=email">Shop now</a></td></tr>
+<tr><td colspan="2" align="center">
+<a href="https://social.example.com/shop"><img src="https://shop.example.com/icons/social.png" width="24" height="24"></a>&nbsp;
+<a href="https://photos.example.com/shop"><img src="https://shop.example.com/icons/photos.png" width="24" height="24"></a>
+</td></tr>
+<tr><td colspan="2"><p style="font-size:12px; color:#888">You receive this mail because you subscribed at shop.example.com.<br>
+<a href="https://shop.example.com/unsubscribe?id=4711">Unsubscribe</a> &middot; <a href="mailto:help@shop.example.com">help@shop.example.com</a><br>
+Example Shop GmbH, Musterstra&szlig;e 1, 20095 Hamburg</p></td></tr>
+</table>
+</td></tr></table>
+<img src="https://track.shop.example.com/open.gif?id=4711" width="1" height="1" alt="">
+</body></html>
+"""
+
+
+def mail(days, clock, sender, to, subject, text, cc=(), reply=None, att=(), seen=True, flagged=False, folder=None, ago=None, html=False, also=()):
+    return dict(days=days, clock=clock, sender=sender, to=to, subject=subject, text=text, cc=cc, reply=reply, att=att, seen=seen, flagged=flagged, folder=folder, ago=ago, html=html, also=also)
+
+
+RELEASE = """Hallo Robin,
+
+danke für deine Punkte, ich habe beides eingearbeitet. Der aktuelle Stand liegt hier: https://wiki.example.com/release/oktober
+
+Zum Budget: Die Zahlen passen, wenn wir den Puffer für den Import aus der Reserve nehmen. Details stehen in der Budget-Tabelle <https://docs.example.com/budget-q4?tab=release&view=summary> (Reiter "Release"). Falls Anna nach der Versionierung fragt, erklärt es https://en.example.org/wiki/Release_(software) ganz gut.
+
+Der neue Zeitplan:
+
+1. Montag: Import einfrieren
+2. Mittwoch: Suche einfrieren, Demo-Probe
+3. Freitag: Release
+   - vorher Backup der Datenbank
+   - danach Ankündigung auf www.example.com/news
+
+Offen ist nur noch, wer die Release-Notes schreibt. Maria hat angeboten, den ersten Entwurf zu übernehmen, wenn du bis Donnerstag die Liste der Änderungen schickst. Die Vorlage vom letzten Mal liegt im Wiki, Rückfragen gehen am besten direkt an release@example.com.
+
+Anbei der Plan als PDF, die Budget-Tabelle und das Foto vom Whiteboard.
+
+Viele Grüße
+Paul
+"""
+
+
+PRIVATE = [
+    [
+        mail(2, "10:05", "maria", ["me"], "Release-Planung Oktober", "Hallo Robin,\n\nfür das Release im Oktober habe ich einen ersten Plan aufgeschrieben: https://wiki.example.com/release/oktober\n\nKannst du bis Mittwoch draufschauen?\n\nViele Grüße\nMaria\n", cc=["paul"]),
+        mail(1, "18:30", "me", ["maria"], "Re: Release-Planung Oktober", "Hallo Maria,\n\nsieht gut aus. Zwei Punkte:\n\n- Der Import braucht noch einen Tag Puffer.\n- Die Suche sollte vor der Demo eingefroren sein.\n\nPaul, kannst du das mit dem Budget abgleichen?\n", cc=["paul"], reply=0),
+        mail(0, None, "paul", ["me"], "Re: Release-Planung Oktober", RELEASE, cc=["maria", "anna"], reply=1, att=[RELEASE_PLAN, RELEASE_BUDGET, WHITEBOARD], seen=False, flagged=True, ago=0.5),
+    ],
+    [
+        mail(3, "09:12", "paul", ["me"], "Termin nächste Woche", "Hallo Robin,\n\npasst dir Dienstag 10 Uhr für die Abstimmung? Ich würde den Raum reservieren.\n\nViele Grüße\nPaul\n"),
+        mail(3, "11:40", "me", ["paul"], "Re: Termin nächste Woche", "Dienstag 10 Uhr passt, gern.\n\nBring bitte die Zahlen aus dem letzten Meeting mit.\n", reply=0),
+        mail(2, "08:55", "paul", ["me", "maria"], "Re: Termin nächste Woche", "Alles klar, ich nehme Maria mit dazu, sie hat die aktuellen Zahlen.\n\nAnbei schon mal der Stand von heute.\n", reply=1, att=[PDF]),
+        mail(2, "09:30", "me", ["paul", "maria"], "Re: Termin nächste Woche", "Super, danke. Dann bis Dienstag.\n", reply=2),
+        mail(1, "16:05", "paul", ["me"], "Rechnung 2026-09", "Hallo Robin,\n\ndie Rechnung für September ist raus, Zahlungsziel 14 Tage.\n\nPaul\n"),
+        mail(0, "10:20", "paul", ["me"], "Re: Termin nächste Woche", "Noch eine Frage zu deiner Antwort von vorgestern: meinst du die Zahlen aus dem Sprint Review oder aus dem Budget-Meeting?\n", reply=1, seen=False),
+        mail(0, "13:45", "me", ["paul"], "Re: Rechnung 2026-09", "Danke, ist bei uns angekommen und wird nächste Woche überwiesen.\n", reply=4),
+        mail(0, None, "paul", ["me"], "Re: Rechnung 2026-09", "Perfekt, danke dir. Die Bestätigung hänge ich an.\n", reply=6, att=[PDF], seen=False, ago=1),
+        mail(1, "11:05", "paul", ["me"], "Protokoll Abstimmung Dienstag", MINUTES, att=[("protokoll-2026-09-15.pdf", "application/pdf", 210442)]),
+    ],
+    [
+        mail(2, "14:10", "maria", ["me", "paul"], "Sprint Review vorbereiten", "Hallo zusammen,\n\nfür das Sprint Review am Donnerstag brauche ich noch die Demo-Reihenfolge. Wer übernimmt welchen Teil?\n\nViele Grüße\nMaria\n"),
+        mail(2, "15:02", "paul", ["me", "maria"], "Re: Sprint Review vorbereiten", "Ich nehme den Import, das ist am weitesten. Die Suche würde ich dir überlassen, Robin.\n", reply=0),
+        mail(2, "17:30", "me", ["paul", "maria"], "Re: Sprint Review vorbereiten", "Passt, dann mache ich die Suche und den Abschluss. Folien schicke ich morgen rum.\n", reply=1),
+        mail(1, "09:48", "me", ["paul", "maria"], "Re: Sprint Review vorbereiten", "Wie versprochen die Folien. Feedback bis heute Abend, dann friere ich sie ein.\n", reply=2, att=[SLIDES]),
+        mail(1, "12:15", "paul", ["me", "maria"], "Re: Sprint Review vorbereiten", "Folie 4 hat noch den alten Screenshot, sonst gut.\n", reply=3),
+        mail(0, None, "maria", ["me", "paul"], "Re: Sprint Review vorbereiten", "Von mir aus fertig, danke euch. Bis Donnerstag!\n", reply=3, seen=False, ago=1.5),
+    ],
+    [
+        mail(9, "19:20", "jane", ["me"], "Weekend", "Hey Robin,\n\nare you around this weekend? We could do the lake hike if the weather holds.\n\nJane\n"),
+        mail(9, "21:05", "me", ["jane"], "Re: Weekend", "Sure, let's do Saturday. I'll bring the good coffee.\n", reply=0),
+        mail(8, "07:50", "jane", ["me"], "Re: Weekend", "Saturday it is. Meet at the north car park at 9?\n", reply=1, flagged=True),
+        mail(8, "08:14", "me", ["jane"], "Re: Weekend", "9 at the north car park, perfect.\n", reply=2),
+        mail(6, "20:31", "jane", ["me"], "Photos from Saturday", "Here is the one from the summit. Send me yours when you get to it!\n", att=[PHOTO], folder="trash", also=["[gmail]/all mail"]),
+        mail(5, "12:02", "jane", ["me"], "Concert tickets", "Two tickets for the 3rd of October just went on sale. Want me to grab one for you?\n", also=["[gmail]/all mail"]),
+        mail(5, "12:30", "me", ["jane"], "Re: Concert tickets", "Yes please! I'll pay you back on Saturday.\n", reply=5),
+    ],
+    [
+        mail(14, "10:02", "peter", ["me"], "Offer for project", "Hi Robin,\n\nplease find the offer attached. Let me know what you think, the numbers are valid until the end of the month.\n\nBest,\nPeter\n", att=[PDF]),
+        mail(13, "09:15", "me", ["peter"], "Re: Offer for project", "Thanks Peter. The scope looks right, but the timeline is tight. Could phase two start two weeks later?\n", reply=0),
+        mail(12, "16:40", "peter", ["me"], "Re: Offer for project", "Two weeks later works for us. Updated offer below.\n\nPhase 1: 4 weeks\nPhase 2: 6 weeks, starting two weeks after phase 1\n\nRead more at https://example.com/offer/4711\n", reply=1, html=True),
+        mail(11, "08:00", "me", ["peter"], "Re: Offer for project", "Looks good, I will confirm with the team on Monday and\n", reply=2, folder="drafts"),
+    ],
+    [
+        mail(21, "11:11", "anna", ["me"], "Rechnung 2026-08", "Guten Tag,\n\nanbei die Rechnung für August. Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.\n\nMit freundlichen Grüßen\nAnna Müller\n", att=[INVOICE]),
+        mail(4, "09:05", "anna", ["me"], "Urlaubsplanung", "Hallo Robin,\n\nwir müssen die Urlaube fürs vierte Quartal eintragen. Lena hat schon die Herbstferien geblockt. Wann wärst du weg?\n", cc=["lena"]),
+        mail(4, "10:12", "lena", ["me", "anna"], "Re: Urlaubsplanung", "Genau, 12. bis 23. Oktober bin ich raus.\n", reply=1),
+        mail(4, "13:47", "me", ["anna"], "Re: Urlaubsplanung", "Ich nehme die Woche vor Weihnachten, 21. bis 24. Dezember.\n", cc=["lena"], reply=2),
+    ],
+    [
+        mail(7, "15:33", "tom", ["me"], "Ein sehr langer Betreff, der garantiert nicht in eine einzige Zeile passt und deshalb elidiert werden muss, damit die Liste ordentlich bleibt", "Robin,\n\nthis is mostly a test of how your reader handles long subject lines. Sorry.\n\nTom\n"),
+        mail(7, "15:40", "tom", ["me"], "", "And this one has no subject at all.\n"),
+        mail(30, "18:20", "me", ["tom"], "Fotos", "Hi Tom, hier die Fotos vom Grillen. Das dritte ist das beste.\n", att=[PHOTO, ("IMG_2042.jpg", "image/jpeg", 2988120)]),
+        mail(29, "09:02", "tom", ["me"], "Re: Fotos", "Brilliant, thanks! The third one is going on the wall.\n", reply=2),
+    ],
+    [
+        mail(1, "06:00", "shop", ["me"], "Your weekly newsletter: 10 things you missed", "This week: the new autumn collection, free shipping until Sunday and a look behind the scenes.\n", html=NEWSLETTER, seen=False),
+        mail(8, "06:00", "shop", ["me"], "Your weekly newsletter: back to school", "Notebooks, bags and everything for the first week.\n\n" + LOREM * 5 + "\n", html=True),
+        mail(15, "06:00", "shop", ["me"], "Your weekly newsletter: last summer sale", "Up to 50% on selected items.\n\n" + LOREM * 4 + "\n", html=True, also=["[gmail]/all mail"]),
+        mail(22, "06:00", "shop", ["me"], "Your weekly newsletter: new arrivals", LOREM * 5 + "\n", html=True, folder="trash"),
+    ],
+    [
+        mail(0, "08:31", "github", ["me"], "[lamemail] Issue #42: Search does not find attachment names", "jane-doe opened an issue.\n\nSearching for the name of an attached file finds nothing, only people, subject and text are searched.\n\nView it on GitHub: https://github.example.com/lamemail/issues/42\n", seen=False),
+        mail(3, "17:12", "github", ["me"], "[lamemail] Pull request #41: Add lamemail thread", "robin merged a pull request.\n\nhttps://github.example.com/lamemail/pull/41\n"),
+        mail(10, "14:03", "github", ["me"], "[lamemail] Issue #39: Feed jumps when a sync runs", "jane-doe commented:\n\nStill happening with 0.3.1 when the folder has more than 5000 messages.\n"),
+        mail(26, "11:58", "github", ["me"], "[lamemail] Pull request #37: Page through the feed", "robin merged a pull request.\n"),
+    ],
+    [
+        mail(2, "03:14", "billing", ["me"], "Your invoice for September is available", "Invoice 2026-09 for your cloud account is attached. The amount of EUR 12.40 will be charged on 2026-10-01.\n", att=[INVOICE]),
+        mail(33, "03:14", "billing", ["me"], "Your invoice for August is available", "Invoice 2026-08 for your cloud account is attached. The amount of EUR 11.90 will be charged on 2026-09-01.\n", att=[("invoice-2026-08.pdf", "application/pdf", 83900)]),
+    ],
+    [
+        mail(1, "08:00", "calendar", ["me"], "Einladung: Sprint Review", "Donnerstag, 10:00 bis 11:00\nRaum Berlin\n\nOrganisator: Maria Vogel\n", att=[("invite.ics", "text/calendar", 2210)]),
+        mail(5, "08:00", "calendar", ["me"], "Erinnerung: Zahnarzt", "Morgen, 08:30\n"),
+    ],
+    [
+        mail(0, "05:12", "prize", ["me"], "You have won a prize!!!", "CONGRATULATIONS! You have been selected. Click here to claim your reward within 24 hours: http://prize.spam.example.net/claim\n", folder="spam", seen=False),
+        mail(3, "22:48", "pharma", ["me"], "Best offers for you", "Cheap meds, no prescription. " * 8 + "\n", folder="spam"),
+        mail(6, "13:26", "bank", ["me"], "Your account has been limited", "Dear customer, we noticed unusual activity. Verify your identity at http://secure-bank.example.net/verify or your account will be closed.\n", folder="spam"),
+    ],
+    [
+        mail(400, "10:15", "sophie", ["me"], "Sommerfest 2025", "Hallo Robin,\n\nwir planen das Sommerfest für den 12. Juli. Kannst du dich um die Musik kümmern?\n\nSophie\n", folder="inbox/archive/2025"),
+        mail(399, "18:44", "me", ["sophie"], "Re: Sommerfest 2025", "Klar, ich frage die Band von letztem Jahr.\n", reply=0, folder="inbox/archive/2025"),
+        mail(397, "09:30", "sophie", ["me"], "Re: Sommerfest 2025", "Super, danke! Budget sind 800 Euro.\n", reply=1, folder="inbox/archive/2025"),
+        mail(320, "14:05", "lena", ["me"], "Projektabschluss", "Hallo Robin,\n\nder Abschlussbericht ist fertig, anbei die finale Version.\n\nLena\n", att=[("abschlussbericht.pdf", "application/pdf", 1402334)], folder="inbox/archive/2025"),
+        mail(319, "08:21", "me", ["lena"], "Re: Projektabschluss", "Danke Lena, sieht gut aus. Ich leite es an Anna weiter.\n", reply=3, folder="inbox/archive/2025"),
+        mail(300, "11:11", "anna", ["me"], "Rechnung 2025-11", "Guten Tag,\n\nanbei die Rechnung für November.\n\nMit freundlichen Grüßen\nAnna Müller\n", att=[("rechnung-2025-11.pdf", "application/pdf", 80211)], folder="inbox/archive/2025"),
+    ],
+    [
+        mail(12, "22:10", "me", ["me"], "Notiz: Ideen für lamemail", "- Feed nach Person filtern\n- Anhänge auf Wunsch laden\n- watch mit IMAP IDLE\n"),
+        mail(18, "17:45", "post", ["tom"], "Adresse geändert", "Hi Tom, ab jetzt erreichst du mich unter post@lamemail.com, die alte Adresse läuft aus.\n"),
+        mail(17, "10:30", "tom", ["post"], "Re: Adresse geändert", "Noted, updated my address book.\n", reply=1),
+        mail(40, "16:16", "lena", ["me"], "Konzert am Freitag", "Hallo Robin,\n\nhast du Lust, am Freitag mit ins Konzert zu kommen? Ich hätte noch eine Karte.\n"),
+        mail(40, "16:40", "me", ["lena"], "Re: Konzert am Freitag", "Gern! Wann treffen wir uns?\n", reply=3),
+        mail(39, "09:12", "lena", ["me"], "Re: Konzert am Freitag", "19 Uhr vor dem Eingang.\n", reply=4),
+    ],
+]
+
+BUSINESS = [
+    [
+        mail(6, "09:05", "oliver", ["me"], "Q4 budget", "Hi Robin,\n\nattached is the first draft of the Q4 budget. The infrastructure line is still a placeholder, could you fill it in by Wednesday?\n\nThanks,\nOliver\n", att=[SHEET]),
+        mail(5, "11:22", "me", ["oliver"], "Re: Q4 budget", "Hi Oliver, will do. Rough number: 18k for hosting plus 6k for the CI runners.\n", reply=0),
+        mail(5, "14:50", "oliver", ["me"], "Re: Q4 budget", "Thanks. Is the 6k a one-off or per quarter?\n", reply=1),
+        mail(4, "08:35", "me", ["oliver"], "Re: Q4 budget", "Per quarter, unfortunately. I have added a note in the sheet.\n", reply=2, att=[SHEET]),
+        mail(0, "09:41", "oliver", ["me"], "Re: Q4 budget", "Got it, that is fine. Final version goes to the board on Friday.\n", reply=3, seen=False),
+    ],
+    [
+        mail(13, "10:00", "emma", ["me", "max"], "Kickoff meeting", "Hi both,\n\nkickoff for the reporting project is next Tuesday at 2pm. Agenda:\n\n1. Scope\n2. Timeline\n3. Roles\n\nEmma\n"),
+        mail(13, "10:25", "max", ["me", "emma"], "Re: Kickoff meeting", "Passt bei mir. Ich bringe die Anforderungen aus dem Vertrieb mit.\n", reply=0),
+        mail(13, "11:03", "me", ["emma", "max"], "Re: Kickoff meeting", "Works for me too. I will prepare the technical overview.\n", reply=1),
+        mail(12, "09:15", "emma", ["me", "max"], "Re: Kickoff meeting", "Great. Room is Berlin, dial-in in the invite.\n", reply=2, att=[("kickoff.ics", "text/calendar", 3120)]),
+    ],
+    [
+        mail(0, "07:58", "ci", ["me"], "Build failed: reporting #318", "Job test on main failed after 4m12s.\n\nhttps://ci.example.com/reporting/318\n", seen=False),
+        mail(1, "16:20", "ci", ["me"], "Build passed: reporting #317", "Job test on main passed in 3m58s.\n"),
+        mail(2, "11:40", "jira", ["me"], "[REP-12] Export as CSV", "Emma Clarke assigned REP-12 to you.\n\nhttps://jira.example.com/browse/REP-12\n"),
+        mail(9, "13:07", "jira", ["me"], "[REP-7] Wrong totals in the monthly report", "Max Mustermann commented:\n\nDie Summen stimmen wieder, danke.\n"),
+    ],
+    [
+        mail(1, "17:00", "team", ["team"], "[team] Weekly notes 38", "- Reporting kickoff done\n- CI runners upgraded\n- Office closed on Friday 3 October\n", cc=["me"]),
+        mail(8, "17:00", "team", ["team"], "[team] Weekly notes 37", "- Q4 planning started\n- New joiner: Emma Clarke\n", cc=["me"]),
+        mail(15, "17:00", "team", ["team"], "[team] Weekly notes 36", "- Summer party photos are online\n", cc=["me"]),
+    ],
+    [
+        mail(20, "09:30", "hr", ["me"], "Welcome to the team", "Hi Robin,\n\nwelcome aboard! Your laptop is ready at the front desk, and the onboarding sessions start on Monday.\n\nPeople Team\n"),
+        mail(19, "10:12", "me", ["hr"], "Re: Welcome to the team", "Thank you! Picked up the laptop, see you Monday.\n", reply=0),
+    ],
+    [
+        mail(11, "15:22", "sophie", ["me"], "Vertrag", "Hallo Robin,\n\nanbei der Vertragsentwurf. Bitte prüfen, insbesondere Abschnitt 4.\n\nSophie\n", att=[CONTRACT]),
+        mail(10, "09:48", "me", ["sophie"], "Re: Vertrag", "Danke, Abschnitt 4 passt, in Abschnitt 7 fehlt noch die Kündigungsfrist.\n", reply=0),
+        mail(10, "16:30", "sophie", ["me"], "Re: Vertrag", "Ergänzt, neue Version anbei.\n", reply=1, att=[CONTRACT]),
+        mail(24, "12:00", "sophie", ["me"], "Alter Entwurf", "Der alte Entwurf, bitte ignorieren.\n", att=[CONTRACT], folder="papierkorb"),
+    ],
+    [
+        mail(1, "04:02", "prize", ["me"], "FINAL NOTICE: your reward expires", "Claim now: http://prize.spam.example.net/claim\n", folder="spamverdacht", seen=False),
+        mail(4, "23:15", "pharma", ["me"], "Special discount", "Cheap meds, no prescription. " * 6 + "\n", folder="spamverdacht"),
+        mail(16, "02:47", "bank", ["me"], "Unusual sign-in detected", "Verify at http://secure-bank.example.net/verify\n", folder="spamverdacht"),
+    ],
+    [
+        mail(0, "11:30", "me", ["emma"], "Re: Kickoff meeting", "Emma, one more thing about the timeline: the export has to wait for\n", folder="entwürfe"),
+        mail(3, "12:05", "max", ["me"], "Mittagessen?", "Hallo Robin, gehst du heute mit zum Italiener? 12:30 unten.\n"),
+        mail(3, "12:09", "me", ["max"], "Re: Mittagessen?", "Bin dabei.\n", reply=1),
+        mail(27, "14:44", "emma", ["me"], "Access to the reporting repo", "Hi Robin, could you give me write access to the reporting repo? My handle is emma-clarke.\n"),
+        mail(27, "15:01", "me", ["emma"], "Re: Access to the reporting repo", "Done, you should have an invitation in your inbox.\n", reply=3),
+    ],
+]
+
+
+def addr(account, key):
+    name, address, _, _ = PEOPLE[key]
+    return {"name": name, "address": address or ACCOUNTS[account]["address"]}
+
+
+def quoted(text):
+    return "\n".join("> " + line if line else ">" for line in text.rstrip("\n").split("\n")) + "\n"
+
+
+def attribution(lang, previous):
+    sender = previous["from"][0]
+    name = sender["name"] or sender["address"]
+    date, time = previous["received"][:10], previous["received"][11:16]
+    if lang == "en":
+        return f"On {date} at {time}, {name} <{sender['address']}> wrote:\n"
+    return f"Am {date} um {time} schrieb {name}:\n"
+
+
+def when_of(step):
+    if step["ago"] is not None:
+        return NOW - datetime.timedelta(minutes=step["ago"])
+    hour, minute = (int(part) for part in step["clock"].split(":"))
+    day = NOW - datetime.timedelta(days=step["days"])
+    when = day.replace(hour=hour, minute=minute, tzinfo=None).astimezone()
+    return min(when, NOW - datetime.timedelta(minutes=2))
+
+
+def build(account, steps, uid):
+    written = []
+    originals = []
+    for index, step in enumerate(steps):
+        when = when_of(step)
+        own = step["sender"] in ("me", "post")
+        folder = step["folder"] or (marked(account, "sent") if own else "inbox")
+        lang, signature = PEOPLE[step["sender"]][2], PEOPLE[step["sender"]][3]
+        text = step["text"]
+        previous = originals[step["reply"]] if step["reply"] is not None else None
+        if signature:
+            text += "\n" + signature
+        if previous is not None:
+            text += "\n" + attribution(lang, previous) + quoted(previous["body"])
+        uid += 1
+        msg = {
+            "message_id": f"{uid}@dev.lamemail",
+            "references": (previous["references"] + [previous["message_id"]]) if previous else [],
+            "from": [addr(account, step["sender"])],
+            "received": when.isoformat(),
+            "body": text,
+        }
+        flags = "".join(
+            letter
+            for letter, on in (
+                ("S", step["seen"]),
+                ("A", any(other["reply"] == index for other in steps)),
+                ("F", step["flagged"]),
+                ("D", folder == marked(account, "drafts")),
+            )
+            if on
+        )
+        eml = compose(account, step, when, msg, previous)
+        written.append((folder, when, uid, flags, eml))
+        originals.append(msg)
+        for extra in step["also"]:
+            uid += 1
+            written.append((extra, when, uid, flags, eml))
+    return written, uid
+
+
+def compose(account, step, when, msg, previous):
+    out = email.message.EmailMessage()
+    out["From"] = mailbox(msg["from"][0])
+    out["To"] = ", ".join(mailbox(addr(account, key)) for key in step["to"])
+    if step["cc"]:
+        out["Cc"] = ", ".join(mailbox(addr(account, key)) for key in step["cc"])
+    out["Subject"] = step["subject"]
+    out["Date"] = email.utils.format_datetime(when)
+    out["Message-ID"] = f"<{msg['message_id']}>"
+    if previous is not None:
+        out["In-Reply-To"] = f"<{previous['message_id']}>"
+        out["References"] = " ".join(f"<{ref}>" for ref in msg["references"])
+    if isinstance(step["html"], str):
+        out.set_content(step["html"], subtype="html")
+    elif step["html"]:
+        out.set_content(f"<html><body>{as_html(msg['body'])}</body></html>", subtype="html")
+    else:
+        out.set_content(msg["body"])
+    for name, kind, content in step["att"]:
+        maintype, subtype = kind.split("/", 1)
+        data = content if isinstance(content, bytes) else bytes(content)
+        out.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
+    return out.as_bytes(policy=email.policy.SMTP)
+
+
+def as_html(text):
+    blocks, lines = [], text.rstrip("\n").split("\n")
+    while lines:
+        quoted = lines[0].startswith(">")
+        block = []
+        while lines and lines[0].startswith(">") == quoted:
+            block.append(lines.pop(0))
+        if quoted:
+            inner = "\n".join(line[1:].removeprefix(" ") for line in block)
+            blocks.append(f'<blockquote type="cite">{as_html(inner)}</blockquote>')
+        else:
+            blocks.append("".join(f"<div>{html.escape(line) or '<br>'}</div>" for line in block))
+    return "".join(blocks)
+
+
+def marked(account, special):
+    return next(folder for folder, mark in ACCOUNTS[account]["marks"].items() if mark == special)
+
+
+def mailbox(address):
+    return email.utils.formataddr((address["name"] or "", address["address"]))
+
+
+def write(account, folder, when, uid, flags, eml):
+    name = f"{uid},{flags}" if flags else str(uid)
+    path = f"{SERVER}/{account}/{ACCOUNTS[account]['folders'][folder]}/{name}.eml"
+    with open(path, "wb") as f:
+        f.write(eml)
+    stamp = when.timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def main():
+    shutil.rmtree(SERVER, ignore_errors=True)
+    total = 0
+    uid = 100
+    for account, conversations in (("private", PRIVATE), ("business", BUSINESS)):
+        for folder, imap_name in ACCOUNTS[account]["folders"].items():
+            os.makedirs(f"{SERVER}/{account}/{imap_name}")
+            with open(f"{SERVER}/{account}/{imap_name}/.uidvalidity", "w") as f:
+                f.write(f"{UIDVALIDITY}\n")
+            if folder in ACCOUNTS[account]["marks"]:
+                with open(f"{SERVER}/{account}/{imap_name}/.special", "w") as f:
+                    f.write(ACCOUNTS[account]["marks"][folder] + "\n")
+        for steps in conversations:
+            written, uid = build(account, steps, uid)
+            for entry in written:
+                write(account, *entry)
+                total += 1
+    print(f"{total} messages on the development server {SERVER}")
+
+
+main()

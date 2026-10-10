@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+TOOLCHAIN="$ROOT/.toolchain"
+
+if [[ ! -x $TOOLCHAIN/cargo/bin/cargo ]]; then
+  echo "Rust toolchain missing, run ./setup first" >&2
+  exit 1
+fi
+
+export RUSTUP_HOME="$TOOLCHAIN/rustup"
+export CARGO_HOME="$TOOLCHAIN/cargo"
+export TMPDIR="$TOOLCHAIN/tmp"
+export PATH="$CARGO_HOME/bin:$PATH"
+mkdir -p "$TMPDIR"
+
+exec "$CARGO_HOME/bin/cargo" "$@"

@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  BUILD_DAY: 2026/09/01
+  BUILD_QT: "6.11"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Take every package from Arch's archive of the build day
+        run: |
+          printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "$BUILD_DAY" > /etc/pacman.d/mirrorlist
+          from_archive() {
+            for attempt in 1 2 3; do
+              pacman --noconfirm --disable-download-timeout "$@" && return
+              echo "attempt $attempt failed" >&2
+            done
+            return 1
+          }
+          from_archive -Syyuu
+          from_archive -S --needed base-devel git curl github-cli qt6-base qt6-declarative qt6-svg qt6-wayland
+
+      - name: Check the Qt the release is built against
+        run: |
+          qt=$(qmake6 -query QT_VERSION)
+          echo "Qt $qt"
+          case "$qt" in
+            "$BUILD_QT".*) ;;
+            *) echo "expected Qt $BUILD_QT, the archive of $BUILD_DAY has $qt" >&2; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust into the project folder
+        run: lamemail-cli/setup
+
+      - name: Build and pack
+        run: ./dev release
+
+      - name: Publish the release with the archive and its checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "lamemail ${GITHUB_REF_NAME#v}" \
+            --notes "$(printf 'For x86_64 with Qt %s or newer.\n\nInstall: curl -fsSL https://raw.githubusercontent.com/%s/master/install.sh | sh' "$BUILD_QT" "$GITHUB_REPOSITORY")"

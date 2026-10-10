@@ -1,0 +1,16 @@
+From: Jane Doe <jane@example.com>
+To: me@example.com
+Subject: Offer for project
+Date: Tue, 15 Sep 2026 14:32:00 +0200
+Message-ID: <a1b2c3@example.com>
+In-Reply-To: <x9y8@example.com>
+References: <root@example.com> <x9y8@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+please find the offer attached.
+
+Jane
