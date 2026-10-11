@@ -14,6 +14,10 @@ die() {
   exit 1
 }
 
+running() {
+  [ -w "$1" ] && ! (: >>"$1") 2>/dev/null
+}
+
 uninstall() {
   rm -f "$bin/lamemail" "$bin/lamemail-ui" "$desktop" "$icon"
   rm -rf "$licenses"
@@ -28,6 +32,9 @@ install_release() {
   for tool in curl tar sha256sum; do
     command -v "$tool" >/dev/null || die "$tool is needed"
   done
+  for program in "$bin/lamemail" "$bin/lamemail-ui"; do
+    ! running "$program" || die "lamemail is running, close it and run this again"
+  done
 
   name="lamemail-$arch-linux"
   tmp=$(mktemp -d)
@@ -37,9 +44,9 @@ install_release() {
   (cd "$tmp" && sha256sum -c "$name.tar.gz.sha256" >/dev/null 2>&1) || die "the download does not match its checksum"
   tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
 
-  rm -rf "$licenses"
   mkdir -p "$bin" "$data"
   cp -R "$tmp/$name/bin/." "$bin/"
+  rm -rf "$licenses"
   cp -R "$tmp/$name/share/." "$data/"
   echo "installed $("$bin/lamemail" --version) into $bin, the menu entry, the icon and the licences into $data"
 
