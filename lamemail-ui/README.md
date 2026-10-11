@@ -299,7 +299,8 @@ failed.
   sends it, as for a reply
 - Settings (gear icon or `Ctrl+,`, back with `Esc`): sections in a
   sidebar (`↑` `↓` switch, the last one is remembered; below 900 px the
-  sidebar shrinks to its icons), each with a title, a hint and its rows:
+  sidebar shrinks to its icons), each with a title, a hint and its rows;
+  the version of lamemail stands at the bottom of the sidebar:
   - General: the theme (System, the omarchy theme; Light or Dark,
     lamemail's own palettes), pixels per mouse wheel notch (120 unless changed), for the
     feed, the mail text and the folder table; a notch starts a flick that

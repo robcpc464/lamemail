@@ -184,6 +184,21 @@ View {
             }
         }
 
+        Text {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: page.compact ? 4 : 27
+            anchors.rightMargin: page.compact ? 4 : 12
+            anchors.bottomMargin: 14
+            text: page.compact ? Application.version : Strings.wordmark + " " + Application.version
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize - 2
+            horizontalAlignment: page.compact ? Text.AlignHCenter : Text.AlignLeft
+            elide: Text.ElideRight
+        }
+
         Rectangle {
             anchors.top: parent.top
             anchors.bottom: parent.bottom

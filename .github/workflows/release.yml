@@ -56,11 +56,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          sed -e "s|@QT@|$BUILD_QT|g" -e "s|@REPOSITORY@|$GITHUB_REPOSITORY|g" .github/release.md > "$RUNNER_TEMP/release.md"
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "lamemail ${GITHUB_REF_NAME#v}" \
-            --notes "$(printf 'For x86_64 with Qt %s or newer.\n\nInstall: curl -fsSL https://raw.githubusercontent.com/%s/master/install.sh | sh' "$BUILD_QT" "$GITHUB_REPOSITORY")"
+            --notes-file "$RUNNER_TEMP/release.md"
 
   appimage:
     needs: archive
