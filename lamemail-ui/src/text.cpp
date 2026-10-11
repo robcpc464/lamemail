@@ -21,7 +21,7 @@ bool endsInPunctuation(const QString& url)
     const QChar last = url.back();
     if (last == u')')
         return url.count(u'(') < url.count(u')');
-    return QStringLiteral(".,;:!?'*]}").contains(last);
+    return QStringLiteral(".,;:!?'*]}~").contains(last);
 }
 
 QString withoutTrailingPunctuation(QString url)

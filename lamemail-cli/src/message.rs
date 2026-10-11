@@ -1,8 +1,6 @@
 use jiff::Timestamp;
 use jiff::tz::{Offset, TimeZone};
-use mail_parser::{
-    Address, HeaderValue, Message, MessageParser, MessagePart, MimeHeaders, PartType,
-};
+use mail_parser::{Address, HeaderValue, Message, MessageParser, MimeHeaders, PartType};
 use serde::{Deserialize, Serialize};
 
 use crate::html;
@@ -150,37 +148,35 @@ fn fill_headers(file: &mut MailFile, message: &Message<'_>) {
 }
 
 fn fill_body(file: &mut MailFile, message: &Message<'_>) {
-    let mut parts = Vec::new();
-    for (index, part) in bodies(message).into_iter().enumerate() {
-        let (source, text) = match &part.body {
-            PartType::Html(html) => (BodySource::Html, Some(html::to_text(html))),
-            PartType::Text(text) => (BodySource::Text, Some(text.replace("\r\n", "\n"))),
-            _ => (BodySource::Text, None),
+    let paired = message.text_body.len() == message.html_body.len();
+    let mut source = None;
+    let mut texts = Vec::new();
+    for (index, part) in message.text_bodies().enumerate() {
+        let (from, text) = match &part.body {
+            PartType::Html(html) => (BodySource::Html, html::to_text(html)),
+            PartType::Text(text) => match paired.then(|| in_html(message, index, text)).flatten() {
+                Some(converted) => (BodySource::Html, converted),
+                None => (BodySource::Text, text.replace("\r\n", "\n")),
+            },
+            _ => continue,
         };
-        if index == 0 {
-            file.body_source = source;
-        }
-        parts.extend(text.map(|text| tidy(&text)).filter(|text| !text.is_empty()));
+        source.get_or_insert(from);
+        texts.extend(Some(tidy(&text)).filter(|text| !text.is_empty()));
     }
-    file.body = parts.join("\n");
-    if file.body.is_empty() {
-        file.body_source = BodySource::None;
+    file.body = texts.join("\n");
+    if !file.body.is_empty() {
+        file.body_source = source.unwrap_or(BodySource::None);
     }
 }
 
-fn bodies<'a>(message: &'a Message<'_>) -> Vec<&'a MessagePart<'a>> {
-    let has_html = message
-        .html_bodies()
-        .any(|part| matches!(part.body, PartType::Html(_)));
-    let text_is_markup = has_html
-        && message
-            .text_bodies()
-            .any(|part| matches!(&part.body, PartType::Text(text) if has_line_break_tags(text)));
-    if text_is_markup {
-        message.html_bodies().collect()
-    } else {
-        message.text_bodies().collect()
+fn in_html(message: &Message<'_>, index: usize, text: &str) -> Option<String> {
+    if !has_line_break_tags(text) {
+        return None;
     }
+    let PartType::Html(html) = &message.html_part(u32::try_from(index).ok()?)?.body else {
+        return None;
+    };
+    Some(html::to_text(html)).filter(|converted| !converted.is_empty())
 }
 
 fn has_line_break_tags(text: &str) -> bool {
@@ -370,6 +366,27 @@ mod tests {
         let file = convert(text_only.as_bytes(), meta());
         assert_eq!(file.body_source, BodySource::Text);
         assert_eq!(file.body, "A line break is <br />.\n");
+    }
+
+    #[test]
+    fn html_in_place_of_a_marked_up_text_part_keeps_the_rest() {
+        let raw = |html: &str| {
+            format!(
+                "Subject: Mixed\r\nMIME-Version: 1.0\r\n\
+                 Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+                 --m\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
+                 --a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello,<br />\r\n\
+                 --a\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{html}\r\n--a--\r\n\
+                 --m\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFooter of the list.\r\n\
+                 --m--\r\n"
+            )
+        };
+        let file = convert(raw("<p>Hello,</p>").as_bytes(), meta());
+        assert_eq!(file.body_source, BodySource::Html);
+        assert_eq!(file.body, "Hello,\n\nFooter of the list.\n");
+        let file = convert(raw("").as_bytes(), meta());
+        assert_eq!(file.body_source, BodySource::Text);
+        assert_eq!(file.body, "Hello,<br />\n\nFooter of the list.\n");
     }
 
     #[test]

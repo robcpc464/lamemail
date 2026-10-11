@@ -38,12 +38,11 @@ pub fn closing(text: &str) -> (&str, &str) {
 }
 
 pub fn parts(body: &str) -> Vec<Part> {
-    nested(body, 0)
+    nested(&body.lines().collect::<Vec<_>>(), 0)
 }
 
-fn nested(body: &str, depth: usize) -> Vec<Part> {
+fn nested(lines: &[&str], depth: usize) -> Vec<Part> {
     let nests = |line: &str| depth < MAX_QUOTE_DEPTH && is_quoted(line);
-    let lines: Vec<&str> = body.lines().collect();
     let mut parts = Vec::new();
     let mut plain: Vec<&str> = Vec::new();
     let mut index = 0;
@@ -71,7 +70,7 @@ fn nested(body: &str, depth: usize) -> Vec<Part> {
         let quoted: Vec<&str> = lines[start..end].iter().map(|line| unquote(line)).collect();
         parts.push(Part::Quote {
             attribution,
-            parts: nested(&quoted.join("\n"), depth + 1),
+            parts: nested(&quoted, depth + 1),
         });
         index = end;
     }
@@ -272,11 +271,18 @@ mod tests {
     fn quotes_nest_only_so_deep() {
         let mut found = parts(&format!("{} deep", ">".repeat(100_000)));
         let mut depth = 0;
-        while let Some(Part::Quote { parts, .. }) = found.pop() {
-            found = parts;
+        while let [Part::Quote { parts, .. }] = found.as_mut_slice() {
+            found = std::mem::take(parts);
             depth += 1;
         }
         assert_eq!(depth, MAX_QUOTE_DEPTH);
+        assert_eq!(
+            found,
+            vec![plain(&format!(
+                "{} deep",
+                ">".repeat(100_000 - MAX_QUOTE_DEPTH)
+            ))]
+        );
     }
 
     #[test]

@@ -371,7 +371,8 @@ exit "$(cat "$dir/code")"
             "<https://example.com/x>, (https://example.com/y) and "
             "https://en.example.org/wiki/Foo_(bar)!\nwww.example.com/path; not http:// nor www. "
             "<b>bold</b> & https://example.com/?q=a|b\nWrite to Paul <paul.berger@example.com>, "
-            "anna.müller@example.de. or https://example.com/@me, not me@localhost nor a@b.c");
+            "anna.müller@example.de. or https://example.com/@me, not me@localhost nor a@b.c, "
+            "~~https://example.com/old~~");
         QTextDocument document;
         const LinkedText linked = linkedText(text);
         document.setHtml(linked.html);
@@ -389,6 +390,7 @@ exit "$(cat "$dir/code")"
                 QStringLiteral("mailto:paul.berger@example.com = paul.berger@example.com"),
                 QStringLiteral("mailto:anna.m%C3%BCller@example.de = anna.müller@example.de"),
                 QStringLiteral("https://example.com/@me = https://example.com/@me"),
+                QStringLiteral("https://example.com/old = https://example.com/old"),
             }));
     }
 

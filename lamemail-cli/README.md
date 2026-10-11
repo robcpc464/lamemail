@@ -1245,7 +1245,7 @@ secret-tool clear application lamemail account private
   `html` (converted, HTML discarded) or `none`. A text part wins over
   its HTML alternative, unless it holds line-break tags (`<br>`, `<br/>`,
   `<br />`): then the sender filled it with markup and the HTML is
-  converted
+  converted in its place, as long as that leaves any text
 - an HTML-only mail is converted by fixed rules, without CSS: paragraphs
   and headings are separated by one blank line, `div`s and table rows are
   lines and the cells of a row are joined by ` · `, lists become `- ` and
@@ -1272,9 +1272,9 @@ secret-tool clear application lamemail account private
   cell keeps its place (`Scarf · · 12 €`); an empty block of a set
   height (`height` beside a `line-height`, the spacer of MJML and of
   table layouts) is a blank line
-- quotes and lists nest 32 levels deep, deeper ones stay at that level,
-  and at most 512 elements are open at once: a mail cannot make the text
-  grow beyond its own size many times over
+- quotes and lists together nest 32 levels deep, deeper ones stay at that
+  level, and at most 512 elements are open at once: a mail cannot make
+  the text grow beyond its own size many times over
 - `attachments` are metadata only; `index` counts attachments in message
   order, `size` is the decoded size
 

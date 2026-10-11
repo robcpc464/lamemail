@@ -75,8 +75,10 @@ const SIGNATURE_IDS: &[&str] = &[
 ];
 const LINK_SCHEMES: &[&str] = &["http://", "https://", "mailto:"];
 const MAILTO: &str = "mailto:";
+const WWW: &str = "www.";
 const OUTLOOK_LINES: &[&str] = &["MsoNormal", "MsoListParagraph"];
 const OUTLOOK_QUOTE: &str = "divRplyFwdMsg";
+const OUTLOOK_PREFIX: &str = "x_";
 const WORD_MARKER: &str = "[if !supportLists]";
 const WORD_MARKER_END: &str = "[endif]";
 const WORD_LEVEL: &str = "level";
@@ -87,7 +89,6 @@ const QUOTE_PREFIX: &str = "> ";
 const STRIKE: &str = "~~";
 const BULLET: &str = "-";
 const LIST_INDENT: usize = 2;
-const MAX_LIST_DEPTH: usize = 32;
 const MAX_OPEN: usize = 512;
 
 pub fn is_invisible(c: char) -> bool {
@@ -189,8 +190,7 @@ struct Table {
 
 struct Link {
     href: String,
-    finished_lines: usize,
-    start: Option<usize>,
+    label: Option<(usize, usize)>,
     image: bool,
 }
 
@@ -198,7 +198,7 @@ struct Style(Vec<(String, String)>);
 
 impl Style {
     fn of(tag: &StartTag<()>) -> Self {
-        let style: String = attribute(tag, "style")
+        let style = attribute(tag, "style")
             .unwrap_or_default()
             .chars()
             .filter(|c| !c.is_whitespace())
@@ -216,41 +216,22 @@ impl Style {
         )
     }
 
-    fn values<'a>(&'a self, property: &'a str) -> impl Iterator<Item = &'a str> {
+    fn value(&self, property: &str) -> Option<&str> {
         self.0
             .iter()
-            .filter(move |(name, _)| name == property)
+            .rev()
+            .find(|(name, _)| name == property)
             .map(|(_, value)| value.as_str())
     }
 
-    fn has(&self, property: &str) -> bool {
-        self.values(property).next().is_some()
-    }
-
     fn is(&self, property: &str, value: &str) -> bool {
-        self.values(property).any(|found| found == value)
-    }
-
-    fn starts(&self, property: &str, prefix: &str) -> bool {
-        self.values(property).any(|found| found.starts_with(prefix))
-    }
-
-    fn is_zero(&self, property: &str) -> bool {
-        self.values(property)
-            .any(|found| is_positive(found) == Some(false))
-    }
-
-    fn has_length(&self, property: &str) -> bool {
-        self.values(property)
-            .any(|found| is_positive(found) == Some(true))
+        self.value(property) == Some(value)
     }
 
     fn word_level(&self) -> Option<usize> {
-        self.values("mso-list").find_map(|list| {
-            let (_, level) = list.split_once(WORD_LEVEL)?;
-            let digits: String = level.chars().take_while(char::is_ascii_digit).collect();
-            digits.parse().ok()
-        })
+        let (_, level) = self.value("mso-list")?.split_once(WORD_LEVEL)?;
+        let digits: String = level.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
     }
 }
 
@@ -274,12 +255,12 @@ struct Converter {
     hidden: usize,
     sup: usize,
     sub: usize,
-    strike: usize,
-    struck: bool,
+    strikes: usize,
+    strike_open: bool,
     signatures: usize,
     signing: bool,
     after_separator: bool,
-    marker: Option<String>,
+    bullet: Option<String>,
     word_marker: Option<String>,
     word_level: usize,
     lists: Vec<List>,
@@ -292,25 +273,28 @@ impl Converter {
     fn start(&mut self, tag: &StartTag<()>) {
         let name = String::from_utf8_lossy(&tag.name).into_owned();
         self.close_implied(&name);
-        let style = Style::of(tag);
-        if VOID.contains(&name.as_str()) {
-            if self.hidden == 0 && !is_hidden(tag, &style) {
-                self.void(&name, tag, &style);
+        let void = VOID.contains(&name.as_str());
+        if self.hidden > 0 {
+            if !void && self.stack.len() < MAX_OPEN {
+                self.stack.push(Open::unseen(name, Role::Inert));
             }
             return;
         }
-        if self.stack.len() == MAX_OPEN {
-            return;
+        let style = Style::of(tag);
+        let hidden = INVISIBLE.contains(&name.as_str()) || is_hidden(tag, &style);
+        if void {
+            if !hidden {
+                self.void(&name, tag, &style);
+            }
+        } else if self.stack.len() < MAX_OPEN {
+            let open = if hidden {
+                self.hidden += 1;
+                Open::unseen(name, Role::Hidden)
+            } else {
+                self.shown(name, tag, &style)
+            };
+            self.stack.push(open);
         }
-        let open = if self.hidden > 0 {
-            Open::unseen(name, Role::Inert)
-        } else if INVISIBLE.contains(&name.as_str()) || is_hidden(tag, &style) {
-            self.hidden += 1;
-            Open::unseen(name, Role::Hidden)
-        } else {
-            self.shown(name, tag, &style)
-        };
-        self.stack.push(open);
     }
 
     fn shown(&mut self, name: String, tag: &StartTag<()>, style: &Style) -> Open {
@@ -320,7 +304,7 @@ impl Converter {
         let struck = is_struck(&name, style);
         let signature = is_signature(tag);
         if struck {
-            self.strike += 1;
+            self.strikes += 1;
         }
         if signature {
             self.signing |= self.signatures == 0;
@@ -351,6 +335,7 @@ impl Converter {
             return;
         }
         if comment == WORD_MARKER {
+            self.flush_word_marker();
             self.word_marker = Some(String::new());
         } else if comment == WORD_MARKER_END
             && let Some(marker) = self.word_marker.take()
@@ -414,8 +399,16 @@ impl Converter {
         }
     }
 
+    fn quote_depth(&self) -> usize {
+        self.quote.min(MAX_QUOTE_DEPTH)
+    }
+
+    fn indent_room(&self) -> usize {
+        MAX_QUOTE_DEPTH - self.quote_depth()
+    }
+
     fn list_depth(&self) -> usize {
-        self.lists.len().min(MAX_LIST_DEPTH)
+        self.lists.len().min(self.indent_room())
     }
 
     fn enter(
@@ -436,8 +429,7 @@ impl Converter {
                 if let Some(href) = link_target(tag) {
                     self.links.push(Link {
                         href,
-                        finished_lines: self.finished_lines,
-                        start: self.open.then_some(self.line.len()),
+                        label: None,
                         image: false,
                     });
                     return Role::Link;
@@ -453,7 +445,7 @@ impl Converter {
             "sup" => self.sup += 1,
             "ol" => self.lists.push(List::Numbers(list_start(tag))),
             "ul" | "menu" => self.lists.push(List::Bullets),
-            "li" => self.marker = Some(self.bullet()),
+            "li" => self.bullet = Some(self.next_bullet()),
             "table" => self.tables.push(Table::default()),
             "tr" => {
                 if let Some(table) = self.tables.last_mut() {
@@ -494,14 +486,14 @@ impl Converter {
                     "table" => {
                         self.tables.pop();
                     }
-                    "li" => self.marker = None,
+                    "li" => self.bullet = None,
                     _ => {}
                 }
             }
         }
         if open.struck {
-            self.strike -= 1;
-            if self.strike == 0 {
+            self.strikes -= 1;
+            if self.strikes == 0 {
                 self.close_strike();
             }
         }
@@ -509,7 +501,7 @@ impl Converter {
             self.signatures -= 1;
             self.signing &= self.signatures > 0;
         }
-        if open.spacer == Some(self.written) {
+        if open.spacer == Some(self.written) && !self.visible {
             self.blank = true;
         }
     }
@@ -575,7 +567,7 @@ impl Converter {
         }
     }
 
-    fn bullet(&mut self) -> String {
+    fn next_bullet(&mut self) -> String {
         let indent = " ".repeat(LIST_INDENT * self.list_depth().saturating_sub(1));
         match self.lists.last_mut() {
             Some(List::Numbers(next)) => {
@@ -602,7 +594,7 @@ impl Converter {
         } else {
             marker
         };
-        let level = self.word_level.saturating_sub(1).min(MAX_LIST_DEPTH);
+        let level = self.word_level.saturating_sub(1).min(self.indent_room());
         if !self.open {
             self.open_line();
         }
@@ -616,31 +608,22 @@ impl Converter {
 
     fn link_end(&mut self, link: Link) {
         let target = display(&link.href);
-        if self.finished_lines != link.finished_lines {
-            self.address(&format!(" <{target}>"));
-            return;
-        }
-        let start = link.start.unwrap_or(self.prefix_len).min(self.line.len());
-        let start = if self.line.is_char_boundary(start) {
-            start
-        } else {
-            self.prefix_len
-        };
-        let rest = &self.line[start..];
-        let label_start = start + rest.len() - rest.trim_start().len();
-        let label = rest.trim();
-        let empty = label.is_empty();
-        let same = bare(label) == bare(&target);
-        if empty {
-            if link.image {
-                self.address(&format!(" {target}"));
+        match link.label {
+            None if link.image => self.address(&format!(" {target}")),
+            None => {}
+            Some((line, start)) if line == self.finished_lines && self.shows(start, &target) => {
+                self.line.truncate(start);
+                self.line.push_str(&target);
+                self.gap = self.gap.max(Gap::Word);
             }
-        } else if same {
-            self.line.truncate(label_start);
-            self.address(&target);
-        } else {
-            self.address(&format!(" <{target}>"));
+            Some(_) => self.address(&format!(" <{target}>")),
         }
+    }
+
+    fn shows(&self, start: usize, target: &str) -> bool {
+        self.line
+            .get(start..)
+            .is_some_and(|label| bare(label.trim_end()).eq_ignore_ascii_case(bare(target)))
     }
 
     fn address(&mut self, address: &str) {
@@ -681,7 +664,7 @@ impl Converter {
             _ => superscript,
         };
         text.chars()
-            .all(|c| c.is_whitespace() || script(c) != c)
+            .all(|c| c.is_whitespace() || is_invisible(c) || script(c) != c)
             .then_some(script)
     }
 
@@ -699,33 +682,43 @@ impl Converter {
             Gap::Word | Gap::None => {}
         }
         self.gap = Gap::None;
-        if self.strike > 0 && !self.struck && !c.is_whitespace() {
-            self.line.push_str(STRIKE);
-            self.struck = true;
+        if !c.is_whitespace() {
+            self.begin_visible();
         }
         self.line.push(c);
-        if !c.is_whitespace() {
-            self.visible = true;
-            self.written += 1;
+    }
+
+    fn begin_visible(&mut self) {
+        if self.strikes > 0 && !self.strike_open {
+            self.line.push_str(STRIKE);
+            self.strike_open = true;
         }
+        let place = (self.finished_lines, self.line.len());
+        self.links
+            .iter_mut()
+            .rev()
+            .take_while(|link| link.label.is_none())
+            .for_each(|link| link.label = Some(place));
+        self.visible = true;
+        self.written += 1;
     }
 
     fn close_strike(&mut self) {
-        if std::mem::take(&mut self.struck) {
+        if std::mem::take(&mut self.strike_open) {
             self.line.truncate(self.line.trim_end().len());
             self.line.push_str(STRIKE);
         }
     }
 
     fn open_line(&mut self) {
-        let quote = self.quote.min(MAX_QUOTE_DEPTH);
+        let quote = self.quote_depth();
         if std::mem::take(&mut self.blank) {
             self.blank_line(self.last_quote.min(quote));
         }
         self.line_quote = quote;
         self.line.push_str(&QUOTE_PREFIX.repeat(quote));
-        match self.marker.take() {
-            Some(marker) => self.line.push_str(&marker),
+        match self.bullet.take() {
+            Some(bullet) => self.line.push_str(&bullet),
             None => self
                 .line
                 .push_str(&" ".repeat(LIST_INDENT * self.list_depth())),
@@ -803,6 +796,9 @@ impl Converter {
 
     fn finish(mut self) -> String {
         self.flush_word_marker();
+        while let Some(open) = self.stack.pop() {
+            self.leave(open);
+        }
         if self.open {
             self.end_line();
         }
@@ -823,61 +819,74 @@ fn is_hidden(tag: &StartTag<()>, style: &Style) -> bool {
     tag.attributes.contains_key("hidden".as_bytes())
         || style.is("display", "none")
         || style.is("visibility", "hidden")
-        || style.is_zero("opacity")
-        || style.is_zero("max-height") && style.is("overflow", "hidden")
+        || style.value("opacity").is_some_and(is_zero)
+        || style.value("max-height").is_some_and(is_zero) && style.is("overflow", "hidden")
 }
 
 fn is_struck(name: &str, style: &Style) -> bool {
     STRUCK.contains(&name)
         || STRUCK_STYLES.iter().any(|property| {
             style
-                .values(property)
-                .any(|value| value.contains(LINE_THROUGH))
+                .value(property)
+                .is_some_and(|value| value.contains(LINE_THROUGH))
         })
 }
 
 fn is_signature(tag: &StartTag<()>) -> bool {
-    attribute(tag, "id").is_some_and(|id| SIGNATURE_IDS.contains(&id.as_str()))
+    attribute(tag, "id").is_some_and(|id| SIGNATURE_IDS.contains(&unprefixed(&id)))
         || attribute(tag, "class").is_some_and(|class| {
             class
                 .split_whitespace()
-                .any(|name| SIGNATURE_CLASSES.contains(&name))
+                .any(|name| SIGNATURE_CLASSES.contains(&unprefixed(name)))
         })
+}
+
+fn unprefixed(name: &str) -> &str {
+    name.trim_start_matches(OUTLOOK_PREFIX)
 }
 
 fn is_indent(tag: &StartTag<()>, style: &Style) -> bool {
     !tag.attributes.contains_key("type".as_bytes())
         && style.is("border", "none")
-        && !style.has("border-left")
+        && style.value("border-left").is_none()
 }
 
 fn is_outlook_quote(tag: &StartTag<()>, style: &Style) -> bool {
-    attribute(tag, "id").is_some_and(|id| id.ends_with(OUTLOOK_QUOTE))
-        || style.is("border", "none")
-            && style.starts("border-top", "solid")
-            && style.starts("padding", "3.0pt")
+    let starts = |property, start| {
+        style
+            .value(property)
+            .is_some_and(|value| value.starts_with(start))
+    };
+    attribute(tag, "id").is_some_and(|id| unprefixed(&id) == OUTLOOK_QUOTE)
+        || style.is("border", "none") && starts("border-top", "solid") && starts("padding", "3.0pt")
 }
 
 fn is_spacer(tag: &StartTag<()>, style: &Style) -> bool {
-    style.has("line-height")
-        && (style.has_length("height")
-            || attribute(tag, "height").is_some_and(|height| is_positive(&height) == Some(true)))
+    style.value("line-height").is_some()
+        && (style.value("height").is_some_and(is_length)
+            || attribute(tag, "height").is_some_and(|height| is_length(&height)))
 }
 
-fn is_positive(size: &str) -> Option<bool> {
-    let number: String = size
-        .trim()
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    number
-        .contains(|c: char| c.is_ascii_digit())
-        .then(|| number.contains(|c: char| matches!(c, '1'..='9')))
+fn number(size: &str) -> &str {
+    let size = size.trim();
+    let end = size
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(size.len());
+    &size[..end]
+}
+
+fn is_zero(size: &str) -> bool {
+    number(size).contains('0') && !is_length(size)
+}
+
+fn is_length(size: &str) -> bool {
+    number(size).contains(|c: char| matches!(c, '1'..='9'))
 }
 
 fn is_pixel(tag: &StartTag<()>, style: &Style) -> bool {
     ["width", "height"].iter().any(|name| {
-        attribute(tag, name).is_some_and(|size| is_tiny(&size)) || style.values(name).any(is_tiny)
+        attribute(tag, name).is_some_and(|size| is_tiny(&size))
+            || style.value(name).is_some_and(is_tiny)
     })
 }
 
@@ -940,14 +949,17 @@ fn display(href: &str) -> String {
     }
 }
 
-fn bare(url: &str) -> String {
-    let url = url.to_lowercase();
+fn bare(url: &str) -> &str {
     let url = LINK_SCHEMES
         .iter()
-        .find_map(|scheme| url.strip_prefix(scheme))
-        .unwrap_or(&url);
-    let url = url.strip_prefix("www.").unwrap_or(url);
-    url.trim_end_matches('/').to_string()
+        .find(|scheme| has_prefix(url, scheme))
+        .map_or(url, |scheme| &url[scheme.len()..]);
+    let url = if has_prefix(url, WWW) {
+        &url[WWW.len()..]
+    } else {
+        url
+    };
+    url.trim_end_matches('/')
 }
 
 fn has_prefix(text: &str, prefix: &str) -> bool {
@@ -1041,10 +1053,12 @@ mod tests {
             style='mso-list:Ignore'>o<span>&nbsp;&nbsp; </span></span><![endif]>Nested</p>
             <p class=MsoListParagraphCxSpLast style='mso-list:l1 level1 lfo2'><![if !supportLists]><span
             style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;&nbsp; </span></span><![endif]>Numbered</p>
-            <p class=MsoNormal><![if !supportLists]>lost<br>marker</p><p class=MsoNormal>End</p>"#;
+            <p class=MsoNormal><![if !supportLists]>lost<br>marker</p>
+            <p class=MsoNormal><![if !supportLists]>one<![if !supportLists]>two<![endif]>three</p>
+            <p class=MsoNormal>End</p>"#;
         assert_eq!(
             to_text(html),
-            "Intro\n- First\n  - Nested\n1. Numbered\nlost\nmarker\nEnd\n"
+            "Intro\n- First\n  - Nested\n1. Numbered\nlost\nmarker\nonetwo three\nEnd\n"
         );
     }
 
@@ -1062,10 +1076,12 @@ mod tests {
                     <tr><td>Scarf</td><td></td><td>12 €</td></tr>\
                     <tr><td>Hat</td><td>2</td><td>&nbsp;</td></tr>\
                     <tr><td></td><td></td><td></td></tr>\
+                    <tr><td>Shop</td><td></td>\
+                    <td><a href=\"https://example.com/\">example.com</a></td></tr>\
                     <tr><td><p>Note</p></td><td>late</td></tr></table>";
         assert_eq!(
             to_text(html),
-            "· Qty · Price\nScarf · · 12 €\nHat · 2\n\nNote\n\nlate\n"
+            "· Qty · Price\nScarf · · 12 €\nHat · 2\nShop · · https://example.com/\n\nNote\n\nlate\n"
         );
     }
 
@@ -1080,8 +1096,9 @@ mod tests {
                     <td style=\"height:30px;line-height:30px\">Y</td></tr>\
                     <tr><td style=\"height:0;line-height:0\"></td></tr>\
                     <tr><td style=\"height:30px\"></td></tr>\
+                    <tr><td>Side</td><td height=\"100\" style=\"line-height:1px\"></td></tr>\
                     <tr><td>End</td></tr></table>";
-        assert_eq!(to_text(html), "Title\n\nHello,\n\nX · Y\nEnd\n");
+        assert_eq!(to_text(html), "Title\n\nHello,\n\nX · Y\nSide\nEnd\n");
     }
 
     #[test]
@@ -1126,6 +1143,30 @@ mod tests {
         assert_eq!(
             to_text("\u{a0}<a href=\"https://example.com/\"><td>\u{e4}</td></a>"),
             "\u{e4} <https://example.com/>\n"
+        );
+        assert_eq!(
+            to_text("\u{a0}<a href=\"https://example.com/\"><td>x</td></a>"),
+            "x <https://example.com/>\n"
+        );
+        assert_eq!(
+            to_text("<a href=\"https://example.com/x\">https://example.com/x </a>"),
+            "https://example.com/x\n"
+        );
+        assert_eq!(
+            to_text("Visit <a href=\"https://example.com/x\">\n https://example.com/x\n</a> today"),
+            "Visit https://example.com/x today\n"
+        );
+        assert_eq!(
+            to_text("<a href=\"https://example.com/x\">shop"),
+            "shop <https://example.com/x>\n"
+        );
+        assert_eq!(to_text("<a href=\"https://example.com/x\"><br></a>"), "");
+        assert_eq!(
+            to_text(
+                "<table><tr><td>E-Mail:</td>\
+                 <td><a href=\"mailto:maria@example.com\">maria@example.com</a></td></tr></table>"
+            ),
+            "E-Mail: · maria@example.com\n"
         );
         assert_eq!(
             to_text(
@@ -1178,8 +1219,10 @@ mod tests {
                     <div style=\"max-height: 0px !important; overflow: hidden\">b</div>\
                     <div style=\"max-height: 0\">c</div>\
                     <div style=\"font-size: 0\"><div style=\"font-size: 14px\">d</div></div>\
-                    <span style=\"mso-hide: all\">e</span> <span style=\"opacity: 0.5\">f</span>";
-        assert_eq!(to_text(html), "c\nd\ne f\n");
+                    <span style=\"mso-hide: all\">e</span> <span style=\"opacity: 0.5\">f</span>\
+                    <div style=\"display: none; display: block\">g</div>\
+                    <div style=\"display: block; display: none\">h</div>";
+        assert_eq!(to_text(html), "c\nd\ne f\ng\n");
     }
 
     #[test]
@@ -1191,6 +1234,10 @@ mod tests {
         assert_eq!(
             to_text(&format!("{}x", "<ul><li>".repeat(100))),
             format!("{}- x\n", " ".repeat(62))
+        );
+        assert_eq!(
+            to_text(&format!("{}<ul><li>x", "<blockquote>".repeat(40))),
+            format!("{}- x\n", "> ".repeat(32))
         );
         assert_eq!(
             to_text(&format!("{}x{}y", "<b>".repeat(2000), "</b>".repeat(2000))),
@@ -1213,7 +1260,14 @@ mod tests {
         );
         assert_eq!(
             to_text(
-                "20 m<sup>2</sup>, 10<sup>-6</sup>, H<sub>2</sub>O, 1<sup>st</sup>, \
+                "<s><a href=\"https://example.com/x\">https://example.com/x</a></s> \
+                 <a href=\"https://example.com/y\"><s>old</s></a>"
+            ),
+            "~~https://example.com/x~~ ~~old~~ <https://example.com/y>\n"
+        );
+        assert_eq!(
+            to_text(
+                "20 m<sup>2&#8203;</sup>, 10<sup>-6</sup>, H<sub>2</sub>O, 1<sup>st</sup>, \
                  Brand<sup>\u{ae}</sup>, <sub>valid until 2026</sub>"
             ),
             "20 m\u{b2}, 10\u{207b}\u{2076}, H\u{2082}O, 1st, Brand\u{ae}, valid until 2026\n"
@@ -1251,7 +1305,7 @@ mod tests {
             "Text\nMore\n"
         );
         assert_eq!(
-            to_text("<blockquote><div>Old</div><div id=\"Signature\">Jane</div></blockquote>"),
+            to_text("<blockquote><div>Old</div><div id=\"x_Signature\">Jane</div></blockquote>"),
             "> Old\n>\n> --\n> Jane\n"
         );
     }
