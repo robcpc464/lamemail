@@ -16,6 +16,9 @@ struct DateLength {
 
 struct Texts {
     const char* wordmark;
+    const char* license;
+    const char* licenseLink;
+    const char* noWarranty;
     const char* unread;
     const char* hits;
     const char* empty;
@@ -242,6 +245,9 @@ class Strings : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QString wordmark READ wordmark CONSTANT)
+    Q_PROPERTY(QString license READ license CONSTANT)
+    Q_PROPERTY(QString licenseLink READ licenseLink CONSTANT)
+    Q_PROPERTY(QString noWarranty READ noWarranty CONSTANT)
     Q_PROPERTY(QString unread READ unread CONSTANT)
     Q_PROPERTY(QString hits READ hits CONSTANT)
     Q_PROPERTY(QString empty READ empty CONSTANT)
@@ -429,6 +435,9 @@ public:
     using QObject::QObject;
 
     QString wordmark() const { return QString::fromUtf8(texts().wordmark); }
+    QString license() const { return QString::fromUtf8(texts().license); }
+    QString licenseLink() const { return QString::fromUtf8(texts().licenseLink); }
+    QString noWarranty() const { return QString::fromUtf8(texts().noWarranty); }
     QString unread() const { return QString::fromUtf8(texts().unread); }
     QString hits() const { return QString::fromUtf8(texts().hits); }
     QString empty() const { return QString::fromUtf8(texts().empty); }

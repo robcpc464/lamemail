@@ -184,19 +184,48 @@ View {
             }
         }
 
-        Text {
+        Column {
+            id: about
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.leftMargin: page.compact ? 4 : 27
             anchors.rightMargin: page.compact ? 4 : 12
             anchors.bottomMargin: 14
-            text: page.compact ? Application.version : Strings.wordmark + " " + Application.version
-            color: Theme.muted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 2
-            horizontalAlignment: page.compact ? Text.AlignHCenter : Text.AlignLeft
-            elide: Text.ElideRight
+            spacing: 2
+
+            Repeater {
+                model: page.compact ? [Application.version]
+                                    : [Strings.wordmark + " " + Application.version, Strings.license,
+                                       Strings.noWarranty]
+
+                Text {
+                    required property string modelData
+
+                    width: about.width
+                    text: modelData
+                    color: aboutHover.hovered ? Theme.foreground : Theme.muted
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSize - 2
+                    horizontalAlignment: page.compact ? Text.AlignHCenter : Text.AlignLeft
+                    elide: Text.ElideRight
+                }
+            }
+
+            HoverHandler {
+                id: aboutHover
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            Tip {
+                visible: aboutHover.hovered && page.compact
+                text: [Strings.license, Strings.noWarranty].join(" · ")
+            }
+
+            TapHandler {
+                onTapped: Qt.openUrlExternally(Strings.licenseLink)
+            }
         }
 
         Rectangle {

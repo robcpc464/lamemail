@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-const SIGNATURE_SEPARATOR: &str = "--";
+pub const SIGNATURE_SEPARATOR: &str = "--";
+pub const MAX_QUOTE_DEPTH: usize = 32;
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -37,12 +38,17 @@ pub fn closing(text: &str) -> (&str, &str) {
 }
 
 pub fn parts(body: &str) -> Vec<Part> {
+    nested(body, 0)
+}
+
+fn nested(body: &str, depth: usize) -> Vec<Part> {
+    let nests = |line: &str| depth < MAX_QUOTE_DEPTH && is_quoted(line);
     let lines: Vec<&str> = body.lines().collect();
     let mut parts = Vec::new();
     let mut plain: Vec<&str> = Vec::new();
     let mut index = 0;
     while index < lines.len() {
-        if !is_quoted(lines[index]) {
+        if !nests(lines[index]) {
             plain.push(lines[index]);
             index += 1;
             continue;
@@ -50,10 +56,10 @@ pub fn parts(body: &str) -> Vec<Part> {
         let start = index;
         let mut end = index;
         while index < lines.len() {
-            if is_quoted(lines[index]) {
+            if nests(lines[index]) {
                 end = index + 1;
             } else if !(lines[index].trim().is_empty()
-                && lines.get(index + 1).is_some_and(|next| is_quoted(next)))
+                && lines.get(index + 1).is_some_and(|next| nests(next)))
             {
                 break;
             }
@@ -65,7 +71,7 @@ pub fn parts(body: &str) -> Vec<Part> {
         let quoted: Vec<&str> = lines[start..end].iter().map(|line| unquote(line)).collect();
         parts.push(Part::Quote {
             attribution,
-            parts: self::parts(&quoted.join("\n")),
+            parts: nested(&quoted.join("\n"), depth + 1),
         });
         index = end;
     }
@@ -153,7 +159,7 @@ fn without_signature(lines: &[&str]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{Part, closing, parts, text};
+    use super::{MAX_QUOTE_DEPTH, Part, closing, parts, text};
 
     fn plain(text: &str) -> Part {
         Part::Text {
@@ -260,6 +266,17 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn quotes_nest_only_so_deep() {
+        let mut found = parts(&format!("{} deep", ">".repeat(100_000)));
+        let mut depth = 0;
+        while let Some(Part::Quote { parts, .. }) = found.pop() {
+            found = parts;
+            depth += 1;
+        }
+        assert_eq!(depth, MAX_QUOTE_DEPTH);
     }
 
     #[test]

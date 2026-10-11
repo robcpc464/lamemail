@@ -1,12 +1,15 @@
 use jiff::Timestamp;
 use jiff::tz::{Offset, TimeZone};
-use mail_parser::{Address, HeaderValue, Message, MessageParser, MimeHeaders, PartType};
+use mail_parser::{
+    Address, HeaderValue, Message, MessageParser, MessagePart, MimeHeaders, PartType,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::html;
 
 pub const FORMAT_VERSION: u32 = 1;
 const MINUTE_CHARS: usize = 16;
+const LINE_BREAK_TAGS: &[&str] = &["<br>", "<br/>", "<br />"];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MailFile {
@@ -148,15 +151,11 @@ fn fill_headers(file: &mut MailFile, message: &Message<'_>) {
 
 fn fill_body(file: &mut MailFile, message: &Message<'_>) {
     let mut parts = Vec::new();
-    for (index, part) in message.text_bodies().enumerate() {
+    for (index, part) in bodies(message).into_iter().enumerate() {
         let (source, text) = match &part.body {
             PartType::Html(html) => (BodySource::Html, Some(html::to_text(html))),
-            _ => (
-                BodySource::Text,
-                message
-                    .body_text(index)
-                    .map(|text| text.replace("\r\n", "\n")),
-            ),
+            PartType::Text(text) => (BodySource::Text, Some(text.replace("\r\n", "\n"))),
+            _ => (BodySource::Text, None),
         };
         if index == 0 {
             file.body_source = source;
@@ -167,6 +166,26 @@ fn fill_body(file: &mut MailFile, message: &Message<'_>) {
     if file.body.is_empty() {
         file.body_source = BodySource::None;
     }
+}
+
+fn bodies<'a>(message: &'a Message<'_>) -> Vec<&'a MessagePart<'a>> {
+    let has_html = message
+        .html_bodies()
+        .any(|part| matches!(part.body, PartType::Html(_)));
+    let text_is_markup = has_html
+        && message
+            .text_bodies()
+            .any(|part| matches!(&part.body, PartType::Text(text) if has_line_break_tags(text)));
+    if text_is_markup {
+        message.html_bodies().collect()
+    } else {
+        message.text_bodies().collect()
+    }
+}
+
+fn has_line_break_tags(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    LINE_BREAK_TAGS.iter().any(|tag| text.contains(tag))
 }
 
 fn tidy(text: &str) -> String {
@@ -328,6 +347,29 @@ mod tests {
                    --b--\r\n";
         let file = convert(raw.as_bytes(), meta());
         assert_eq!(file.body, "Hi,\n\nnews.\n\nBye\n\nMore.\n");
+    }
+
+    #[test]
+    fn html_wins_over_a_text_part_with_line_break_tags() {
+        let raw = |text: &str| {
+            format!(
+                "Subject: Both\r\nMIME-Version: 1.0\r\n\
+                 Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n\
+                 --b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{text}\r\n\
+                 --b\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
+                 <p>Hello,</p><p>news.</p>\r\n--b--\r\n"
+            )
+        };
+        let file = convert(raw("Hello,<br />\r\n<BR>\r\nnews.").as_bytes(), meta());
+        assert_eq!(file.body_source, BodySource::Html);
+        assert_eq!(file.body, "Hello,\n\nnews.\n");
+        let file = convert(raw("Hello,\r\n\r\nnews as text.").as_bytes(), meta());
+        assert_eq!(file.body_source, BodySource::Text);
+        assert_eq!(file.body, "Hello,\n\nnews as text.\n");
+        let text_only = "Subject: Text\r\n\r\nA line break is <br />.\r\n";
+        let file = convert(text_only.as_bytes(), meta());
+        assert_eq!(file.body_source, BodySource::Text);
+        assert_eq!(file.body, "A line break is <br />.\n");
     }
 
     #[test]

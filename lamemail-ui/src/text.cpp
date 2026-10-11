@@ -10,6 +10,10 @@
 
 namespace {
 
+constexpr qsizetype longLinkChars = 60;
+constexpr qsizetype shownLinkChars = 50;
+constexpr char16_t ellipsis = u'\u2026';
+
 QString clock(const QDateTime& when) { return when.toString(QStringLiteral("HH:mm")); }
 
 bool endsInPunctuation(const QString& url)
@@ -32,6 +36,24 @@ QUrl target(const QString& address)
     const bool bare = address.startsWith(QLatin1String("www."), Qt::CaseInsensitive);
     const QUrl url(bare ? QStringLiteral("https://") + address : address);
     return url.isValid() && !url.host().isEmpty() ? url : QUrl();
+}
+
+qsizetype hostEnd(const QString& address)
+{
+    static const QRegularExpression upToHost(QStringLiteral(R"(^(?:\w+://)?[^/?#]*)"));
+    return upToHost.match(address).capturedEnd();
+}
+
+QString shortLink(const QString& address)
+{
+    if (address.size() < longLinkChars)
+        return address;
+    qsizetype kept = std::max(hostEnd(address), shownLinkChars);
+    if (address.size() - kept < 2)
+        return address;
+    if (address.at(kept - 1).isHighSurrogate())
+        --kept;
+    return address.left(kept) + QChar(ellipsis);
 }
 
 }
@@ -140,13 +162,13 @@ QString tildePath(const QString& path)
     return path;
 }
 
-QString htmlWithLinks(const QString& text)
+LinkedText linkedText(const QString& text)
 {
     static const QRegularExpression link(
         QStringLiteral(
             R"((?<![\w.%+-])([\w.%+-]+@(?:[\w-]+\.)+[^\W\d_]{2,})|\b(?:https?://|www\.)[^\s<>"]+)"),
         QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
-    QString html = QStringLiteral("<span style=\"white-space: pre-wrap\">");
+    LinkedText linked { QStringLiteral("<span style=\"white-space: pre-wrap\">"), { } };
     qsizetype done = 0;
     for (auto matches = link.globalMatch(text); matches.hasNext();) {
         const auto match = matches.next();
@@ -155,12 +177,17 @@ QString htmlWithLinks(const QString& text)
         const QUrl url = mail.isEmpty() ? target(found) : QUrl(QStringLiteral("mailto:") + mail);
         if (url.isEmpty())
             continue;
-        html += text.mid(done, match.capturedStart() - done).toHtmlEscaped();
-        html += QStringLiteral("<a href=\"%1\">%2</a>")
-                    .arg(url.toString(QUrl::FullyEncoded).toHtmlEscaped(), found.toHtmlEscaped());
+        const QString address = url.toString(QUrl::FullyEncoded);
+        const QString shown = mail.isEmpty() ? shortLink(found) : found;
+        if (shown != found)
+            linked.shortened.append(address);
+        linked.html += text.mid(done, match.capturedStart() - done).toHtmlEscaped();
+        linked.html += QStringLiteral("<a href=\"%1\">%2</a>")
+                           .arg(address.toHtmlEscaped(), shown.toHtmlEscaped());
         done = match.capturedStart() + found.size();
     }
-    return html + text.mid(done).toHtmlEscaped() + QStringLiteral("</span>");
+    linked.html += text.mid(done).toHtmlEscaped() + QStringLiteral("</span>");
+    return linked;
 }
 
 namespace {

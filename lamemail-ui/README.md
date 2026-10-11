@@ -134,7 +134,11 @@ failed.
   no further click follows (a double or triple click copies its final
   selection), a small "Copied" hint at the end of the selection says so. Web addresses in the text (`http://`, `https://`,
   `www.`, bare or as `Text <url>`) are links in the accent colour that a
-  click opens in the browser; the address always stays visible. Mail
+  click opens in the browser; the address always stays visible. An
+  address of 60 characters or more is shown shortened, its host in full
+  and 50 characters in all, then `…`; the pointer on it shows the whole
+  address, the click opens it, and the text of the mail keeps it. Copying
+  by selecting takes what is shown, so the shortened form. Mail
   addresses are links as well: a click starts a new mail to the address,
   from the account of the mail unless the contacts know a better one. A click
   on an attachment fetches it with `lamemail attachment` into
@@ -300,7 +304,9 @@ failed.
 - Settings (gear icon or `Ctrl+,`, back with `Esc`): sections in a
   sidebar (`↑` `↓` switch, the last one is remembered; below 900 px the
   sidebar shrinks to its icons), each with a title, a hint and its rows;
-  the version of lamemail stands at the bottom of the sidebar:
+  the version of lamemail stands at the bottom of the sidebar, with the
+  licence and "No warranty" below it (a tooltip while the sidebar is
+  narrow); a click opens the text of the GPL:
   - General: the theme (System, the omarchy theme; Light or Dark,
     lamemail's own palettes), pixels per mouse wheel notch (120 unless changed), for the
     feed, the mail text and the folder table; a notch starts a flick that

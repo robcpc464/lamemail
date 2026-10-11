@@ -5,6 +5,7 @@ TextEdit {
     id: paragraph
     property var part: ({})
     readonly property bool signature: part.kind === "signature"
+    readonly property bool shortened: (part.shortened ?? []).includes(hoveredLink)
 
     text: "<style>a { color: " + Theme.accent + "; text-decoration: none }</style>" + (part.html || "")
     readOnly: true
@@ -19,7 +20,21 @@ TextEdit {
     onLinkActivated: (link) => Qt.openUrlExternally(link)
 
     HoverHandler {
+        id: hover
         cursorShape: paragraph.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
+    }
+
+    Tip {
+        width: Math.min(implicitWidth, 520)
+        wrapMode: Text.WrapAnywhere
+        visible: paragraph.shortened
+        text: paragraph.hoveredLink
+        onAboutToShow: {
+            const pointer = hover.point.position
+            const line = paragraph.positionToRectangle(paragraph.positionAt(pointer.x, pointer.y))
+            x = pointer.x
+            y = line.y + line.height + 4
+        }
     }
 
     PointHandler {

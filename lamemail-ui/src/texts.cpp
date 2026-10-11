@@ -11,6 +11,9 @@ constexpr const char* commands
 
 const Texts en {
     .wordmark = "lamemail",
+    .license = "GPL-3.0-or-later",
+    .licenseLink = "https://www.gnu.org/licenses/gpl-3.0.html",
+    .noWarranty = "No warranty",
     .unread = "{} unread",
     .hits = "{} found",
     .empty = "No mail yet",
@@ -251,6 +254,9 @@ const Texts en {
 
 const Texts de {
     .wordmark = "lamemail",
+    .license = "GPL-3.0-or-later",
+    .licenseLink = "https://www.gnu.org/licenses/gpl-3.0.html",
+    .noWarranty = "Ohne Gewährleistung",
     .unread = "{} ungelesen",
     .hits = "{} Treffer",
     .empty = "Noch keine Mails",

@@ -54,9 +54,11 @@ QVariantList withLinks(const QJsonArray& parts)
         if (part.value(QLatin1String("kind")).toString() == QLatin1String("quote"))
             map.insert(
                 QStringLiteral("parts"), withLinks(part.value(QLatin1String("parts")).toArray()));
-        else
-            map.insert(QStringLiteral("html"),
-                htmlWithLinks(part.value(QLatin1String("text")).toString()));
+        else {
+            const LinkedText text = linkedText(part.value(QLatin1String("text")).toString());
+            map.insert(QStringLiteral("html"), text.html);
+            map.insert(QStringLiteral("shortened"), text.shortened);
+        }
         linked.append(map);
     }
     return linked;

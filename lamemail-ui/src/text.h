@@ -5,8 +5,14 @@
 
 #include <QDateTime>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 #include <optional>
+
+struct LinkedText {
+    QString html;
+    QStringList shortened;
+};
 
 QString person(const Addr& addr);
 QString displayName(const Addr& addr);
@@ -19,5 +25,5 @@ QString dateText(const QDate& date, const char* format, Lang lang);
 int dayIndex(const std::optional<QDateTime>& when, const QDate& today);
 QString fileSize(qint64 bytes);
 QString tildePath(const QString& path);
-QString htmlWithLinks(const QString& text);
+LinkedText linkedText(const QString& text);
 QVariantMap aiReport(const Suggestion& suggestion, const QDateTime& now, Lang lang);

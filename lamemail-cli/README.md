@@ -318,7 +318,8 @@ the derived fields `own`, `forwarded` (as in `list`), `text`, `parts`,
   quote when it ends with a colon ("On … Jane wrote:", "Am … schrieb
   Jane:", "Le … Jean a écrit :", in any language, blank lines between
   allowed), without its colon, or null; the quoted lines lose
-  one `>` and are split again, so older quotes nest. Blank lines at the
+  one `>` and are split again, so older quotes nest, 32 levels deep; what
+  is quoted deeper stays text with its `>`. Blank lines at the
   ends of a part are dropped, empty parts left out:
 
   ```json
@@ -1241,16 +1242,39 @@ secret-tool clear application lamemail account private
   characters (zero-width spaces and joiners, direction marks, fillers such
   as U+034F or U+3164) counts as blank, several blank lines become one and
   none lead or trail; `body_source` says where it came from: `text`,
-  `html` (converted, HTML discarded) or `none`
+  `html` (converted, HTML discarded) or `none`. A text part wins over
+  its HTML alternative, unless it holds line-break tags (`<br>`, `<br/>`,
+  `<br />`): then the sender filled it with markup and the HTML is
+  converted
 - an HTML-only mail is converted by fixed rules, without CSS: paragraphs
   and headings are separated by one blank line, `div`s and table rows are
   lines and the cells of a row are joined by ` · `, lists become `- ` and
   `1. ` items indented by two spaces per level, `<pre>` keeps its spaces,
   `<blockquote>` becomes `>` lines; a link is written as `Text <url>`, or
   as the address alone when that is its text (`mailto:` without the
-  scheme), a linked image by its alt text; scripts, styles, hidden
-  elements (`display:none`, `visibility:hidden`, `hidden`), unlinked
-  images, tracking pixels and invisible filler characters are dropped
+  scheme), a linked image by its alt text, an unlinked one as `[alt]`;
+  scripts, styles, hidden elements (`display:none`, `visibility:hidden`,
+  `opacity:0`, `max-height:0` with `overflow:hidden`, `hidden`), images
+  without alt text, tracking pixels and invisible filler characters are
+  dropped
+- what a mail program marks without a `<blockquote>` or a `-- ` line is
+  found by its markup, never by words: the original below an Outlook
+  reply (the header block Word draws a line above, `divRplyFwdMsg`)
+  becomes `>` lines up to the end of the mail or of the quote around it,
+  a signature block (`gmail_signature`, `moz-signature`,
+  `protonmail_signature_block`, the ids `Signature`, `AppleMailSignature`
+  and `ms-outlook-mobile-signature`) gets its `--` line, a `<blockquote>`
+  that only indents (`border:none`) is a paragraph, and Word's list
+  paragraphs become `- ` and `1. ` items by their level
+- struck text (`<s>`, `<del>`, `line-through`) stands between `~~`, digits
+  and signs alone in `<sup>` and `<sub>` become their raised and lowered
+  characters (`m²`, `10⁻⁶`, `H₂O`); in a table with header cells an empty
+  cell keeps its place (`Scarf · · 12 €`); an empty block of a set
+  height (`height` beside a `line-height`, the spacer of MJML and of
+  table layouts) is a blank line
+- quotes and lists nest 32 levels deep, deeper ones stay at that level,
+  and at most 512 elements are open at once: a mail cannot make the text
+  grow beyond its own size many times over
 - `attachments` are metadata only; `index` counts attachments in message
   order, `size` is the decoded size
 

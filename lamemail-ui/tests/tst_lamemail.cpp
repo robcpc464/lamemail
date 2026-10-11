@@ -373,8 +373,10 @@ exit "$(cat "$dir/code")"
             "<b>bold</b> & https://example.com/?q=a|b\nWrite to Paul <paul.berger@example.com>, "
             "anna.müller@example.de. or https://example.com/@me, not me@localhost nor a@b.c");
         QTextDocument document;
-        document.setHtml(htmlWithLinks(text));
+        const LinkedText linked = linkedText(text);
+        document.setHtml(linked.html);
         QCOMPARE(document.toPlainText(), text);
+        QVERIFY(linked.shortened.isEmpty());
         QCOMPARE(anchors(document),
             QStringList({
                 QStringLiteral("https://example.com/a?b=1&c=2 = https://example.com/a?b=1&c=2"),
@@ -388,6 +390,40 @@ exit "$(cat "$dir/code")"
                 QStringLiteral("mailto:anna.m%C3%BCller@example.de = anna.müller@example.de"),
                 QStringLiteral("https://example.com/@me = https://example.com/@me"),
             }));
+    }
+
+    void longLinksAreShortenedBehindTheirHost()
+    {
+        const QString query = QStringLiteral("?token=") + QString(80, u'x');
+        const QString longHost
+            = QStringLiteral("https://") + QString(60, u'a') + QStringLiteral(".example.com");
+        const QString mail = QString(60, u'b') + QStringLiteral("@example.com");
+        const QString fits = QStringLiteral("https://example.com/") + QString(39, u'c');
+        const QString onward = QStringLiteral("www.example.com/go?to=https://") + QString(60, u'd');
+        const LinkedText linked = linkedText(
+            QStringLiteral("Read <https://www.example.com/inbox.html%1>, %2/path/to/a/page "
+                           "www.example.com/news%1 %3 %4 %5")
+                .arg(query, longHost, mail, fits, onward));
+        QTextDocument document;
+        document.setHtml(linked.html);
+        const QString inbox = QStringLiteral("https://www.example.com/inbox.html");
+        const QString news = QStringLiteral("www.example.com/news");
+        QCOMPARE(anchors(document),
+            QStringList({
+                inbox + query + QStringLiteral(" = ") + inbox
+                    + QStringLiteral("?token=xxxxxxxxx\u2026"),
+                longHost + QStringLiteral("/path/to/a/page = ") + longHost
+                    + QStringLiteral("\u2026"),
+                QStringLiteral("https://") + news + query + QStringLiteral(" = ") + news
+                    + QStringLiteral("?token=") + QString(23, u'x') + QStringLiteral("\u2026"),
+                QStringLiteral("mailto:") + mail + QStringLiteral(" = ") + mail,
+                fits + QStringLiteral(" = ") + fits,
+                QStringLiteral("https://") + onward + QStringLiteral(" = ") + onward.left(50)
+                    + QStringLiteral("\u2026"),
+            }));
+        QCOMPARE(linked.shortened,
+            QStringList({ inbox + query, longHost + QStringLiteral("/path/to/a/page"),
+                QStringLiteral("https://") + news + query, QStringLiteral("https://") + onward }));
     }
 
     void mailtoLinksAskForANewMail()

@@ -4,9 +4,12 @@ import Lamemail
 
 ToolTip {
     id: tip
+    property alias wrapMode: label.wrapMode
+
     delay: 200
 
     contentItem: Text {
+        id: label
         text: tip.text
         color: Theme.foreground
         font.family: Theme.fontFamily
