@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,9 +12,11 @@ permissions:
 env:
   BUILD_DAY: 2026/09/01
   BUILD_QT: "6.11"
+  APPIMAGE_QT: 6.11.2
 
 jobs:
-  release:
+  archive:
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
@@ -39,7 +42,7 @@ jobs:
             *) echo "expected Qt $BUILD_QT, the archive of $BUILD_DAY has $qt" >&2; exit 1 ;;
           esac
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -58,3 +61,142 @@ jobs:
             --verify-tag \
             --title "lamemail ${GITHUB_REF_NAME#v}" \
             --notes "$(printf 'For x86_64 with Qt %s or newer.\n\nInstall: curl -fsSL https://raw.githubusercontent.com/%s/master/install.sh | sh' "$BUILD_QT" "$GITHUB_REPOSITORY")"
+
+  appimage:
+    needs: archive
+    if: ${{ !cancelled() && needs.archive.result != 'failure' }}
+    runs-on: ubuntu-24.04
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: 1
+      IMAGE: lamemail-x86_64.AppImage
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install what Qt and its plugins link against
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends file libgl1-mesa-dev libegl1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-0 libx11-xcb1 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libwayland-client0 libwayland-cursor0 \
+            libwayland-egl1 libfontconfig1 libdbus-1-3
+
+      - name: Install Qt as the Qt Company builds it
+        run: |
+          pipx install aqtinstall
+          aqt install-qt linux desktop "$APPIMAGE_QT" linux_gcc_64 --outputdir "$RUNNER_TEMP/qt"
+          qt="$RUNNER_TEMP/qt/$APPIMAGE_QT/gcc_64"
+          [ -e "$qt/bin/qmake6" ] || ln -s qmake "$qt/bin/qmake6"
+          echo "$qt/bin" >> "$GITHUB_PATH"
+          echo "QT=$qt" >> "$GITHUB_ENV"
+          "$qt/bin/qmake6" -query QT_VERSION
+
+      - name: Install Rust into the project folder
+        run: lamemail-cli/setup
+
+      - name: Build and pack
+        run: ./dev release
+
+      - name: Fetch linuxdeploy and its Qt plugin
+        working-directory: ${{ runner.temp }}
+        run: |
+          for tool in linuxdeploy linuxdeploy-plugin-qt; do
+            curl -fsSL -O "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-x86_64.AppImage"
+          done
+          chmod +x linuxdeploy*.AppImage
+          sha256sum linuxdeploy*.AppImage
+
+      - name: Pack the AppImage
+        env:
+          QMAKE: ${{ env.QT }}/bin/qmake
+          QML_SOURCES_PATHS: ${{ github.workspace }}/lamemail-ui/qml
+          LD_LIBRARY_PATH: ${{ env.QT }}/lib
+          LDAI_OUTPUT: ${{ env.IMAGE }}
+          OUTPUT: ${{ env.IMAGE }}
+        run: |
+          stage="$RUNNER_TEMP/stage"
+          app="$RUNNER_TEMP/AppDir"
+          plugins="$app/usr/plugins"
+          licenses="$app/usr/share/licenses/lamemail"
+          mkdir -p "$stage"
+          tar -xzf "dist/lamemail-$(uname -m)-linux.tar.gz" --strip-components=1 -C "$stage"
+
+          "$RUNNER_TEMP/linuxdeploy-x86_64.AppImage" --appdir "$app" \
+            --executable "$stage/bin/lamemail-ui" \
+            --executable "$stage/bin/lamemail" \
+            --desktop-file "$stage/share/applications/lamemail-ui.desktop" \
+            --icon-file "$stage/share/icons/hicolor/scalable/apps/lamemail.svg" \
+            --plugin qt
+
+          mkdir -p "$plugins/platforms" "$plugins/platformthemes" "$plugins/imageformats" "$plugins/iconengines"
+          cp "$QT"/plugins/platforms/libqwayland*.so "$QT/plugins/platforms/libqoffscreen.so" "$plugins/platforms/"
+          cp "$QT/plugins/platformthemes/libqxdgdesktopportal.so" "$plugins/platformthemes/"
+          cp "$QT/plugins/imageformats/libqsvg.so" "$plugins/imageformats/"
+          cp "$QT/plugins/iconengines/libqsvgicon.so" "$plugins/iconengines/"
+          added="$plugins/platforms $plugins/platformthemes $plugins/imageformats $plugins/iconengines"
+          for kind in "$QT"/plugins/wayland-*; do
+            cp -r "$kind" "$plugins/"
+            added="$added $plugins/${kind##*/}"
+          done
+          for module in QtQuick/Controls/Basic QtQuick/Controls/impl QtQuick/Dialogs/quickimpl; do
+            if [ ! -d "$app/usr/qml/$module" ]; then
+              mkdir -p "$app/usr/qml/${module%/*}"
+              cp -r "$QT/qml/$module" "$app/usr/qml/$module"
+            fi
+            added="$added $app/usr/qml/$module"
+          done
+
+          mkdir -p "$app/usr/share/licenses"
+          cp -r "$stage/share/licenses/lamemail" "$licenses"
+          cp /usr/share/common-licenses/LGPL-3 "$licenses/LGPL-3.0"
+          printf '%s\n' \
+            "This image carries the Qt libraries, version $APPIMAGE_QT, as the Qt Company builds them," \
+            "under the GNU Lesser General Public License, version 3 (LGPL-3.0 beside this file)." \
+            "Their source: https://download.qt.io/official_releases/qt/" \
+            "The licences of the code inside Qt: https://doc.qt.io/qt-6/licenses-used-in-qt.html" \
+            "To run lamemail with other Qt libraries, unpack the image with --appimage-extract" \
+            "and replace those in usr/lib, usr/plugins and usr/qml." > "$licenses/QT-NOTICE"
+
+          deps=""
+          for folder in $added; do
+            deps="$deps --deploy-deps-only $folder"
+          done
+          "$RUNNER_TEMP/linuxdeploy-x86_64.AppImage" --appdir "$app" $deps --custom-apprun AppRun --output appimage
+
+          sha256sum "$IMAGE" > "$IMAGE.sha256"
+          ls -la "$IMAGE"
+          du -sh "$app/usr/lib" "$app/usr/plugins" "$app/usr/qml" || true
+          cat "$app/usr/bin/qt.conf" || true
+
+      - name: Keep the AppImage of a trial run
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v6
+        with:
+          name: lamemail-appimage
+          path: |
+            ${{ env.IMAGE }}
+            ${{ env.IMAGE }}.sha256
+          retention-days: 7
+
+      - name: Try both programs from the AppImage
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+        run: |
+          ln -s "$IMAGE" lamemail
+          timeout 60 ./lamemail --version | grep -E '^lamemail [0-9]'
+          timeout 60 ./lamemail --dir "$RUNNER_TEMP/mail" init
+          stopped=0
+          timeout -k 5 20 "./$IMAGE" --dir "$RUNNER_TEMP/mail" > ui.log 2>&1 || stopped=$?
+          cat ui.log
+          echo "the UI ended with $stopped, 124 means it was still running after 20 seconds"
+          [ "$stopped" -eq 124 ]
+          ! grep -E 'is not installed|Cannot load library|could not be loaded|Could not find the Qt platform plugin|failed to load component' ui.log
+
+      - name: Add the AppImage to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$IMAGE" "$IMAGE.sha256" --repo "$GITHUB_REPOSITORY"

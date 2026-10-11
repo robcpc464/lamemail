@@ -1,0 +1,11 @@
+#!/bin/sh
+here=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+case "${ARGV0##*/}" in
+  lamemail)
+    exec "$here/usr/bin/lamemail" "$@"
+    ;;
+  *)
+    export QT_QPA_PLATFORMTHEME=xdgdesktopportal
+    exec "$here/usr/bin/lamemail-ui" "$@"
+    ;;
+esac
