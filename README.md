@@ -176,6 +176,15 @@ Two projects, one repository, very few dependencies:
 - [`lamemail-ui`](lamemail-ui/README.md) is C++ and Qt 6 with a QML
   interface. Fully native: no web view, nothing but Qt.
 
+## Why "lamemail"?
+
+Because email is lame. Reading it is lame, writing it is lame, the
+clients are lame, and the protocol underneath is from 1986 and feels
+like it. lamemail does not pretend otherwise: it turns your mail into
+a folder of text files and lets an AI do the lame parts.
+
+Also, I am bad at naming things.
+
 ## Contributing
 
 lamemail does not accept pull requests. Bug reports and ideas are very
