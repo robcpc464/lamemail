@@ -4,7 +4,7 @@ use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use jiff::Zoned;
 use serde::Serialize;
 
@@ -128,6 +128,9 @@ pub async fn sync_folders(
     }
     let account_dir = dir.join(id);
     let folders = server.list_folders().await?;
+    if !folders.iter().any(imap::Folder::is_inbox) {
+        bail!("{}", t().no_inbox_listed);
+    }
     let account = assign_folders(dir, id, &folders, report)?;
 
     let mut by_path: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
@@ -426,6 +429,70 @@ mod tests {
             ]
         );
         assert!(seen.iter().all(|progress| progress.account == "private"));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_server_that_lists_no_inbox_changes_nothing() {
+        let base = std::env::temp_dir().join(format!("lamemail-sync-inbox-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let server = base.join("server/private");
+        for folder in ["INBOX", "Sent", "Notes"] {
+            fs::create_dir_all(server.join(folder)).unwrap();
+            fs::write(server.join(folder).join(".uidvalidity"), "1").unwrap();
+            fs::write(server.join(folder).join("1.eml"), PLAIN).unwrap();
+        }
+        fs::write(server.join("Sent/.special"), "sent").unwrap();
+        let account = Account::new(
+            "imap.example.com".to_string(),
+            993,
+            "me@example.com".to_string(),
+        );
+        let dir = base.join("mirror");
+        configured(&dir, &account);
+        let sync = |scope| {
+            let (dir, server) = (dir.clone(), server.clone());
+            async move {
+                let access = Access::Dev(server);
+                let account = settings::load(&dir).unwrap().account("private")?.clone();
+                let mut server = Server::connect(&account, access).await?;
+                sync_folders(&mut server, &dir, "private", scope, &Report::Quiet).await
+            }
+        };
+        sync(Scope::All).await.unwrap();
+        {
+            let mut settings = settings::load(&dir).unwrap();
+            let folders = &mut settings.account_mut("private").unwrap().folders;
+            kind::reassign(folders, "notes", Some(Kind::Archive), None, false).unwrap();
+            settings::save(&dir, &settings).unwrap();
+        }
+        assert_eq!(sync(Scope::All).await.unwrap().counts.new, 1);
+        let assigned = || {
+            settings::load(&dir).unwrap().accounts["private"]
+                .folders
+                .clone()
+        };
+        let files = || {
+            ["inbox", "sent", "notes"].map(|folder| {
+                store::index(&dir.join("private").join(folder))
+                    .unwrap()
+                    .len()
+            })
+        };
+        let before = assigned();
+        assert_eq!(before["notes"].kind, Some(Kind::Archive));
+
+        for emptied in [vec!["INBOX"], vec!["Sent", "Notes"]] {
+            for folder in emptied {
+                fs::rename(server.join(folder), base.join(folder)).unwrap();
+            }
+            for scope in [Scope::Inbox, Scope::All] {
+                let err = sync(scope).await.unwrap_err();
+                assert_eq!(format!("{err:#}"), t().no_inbox_listed);
+            }
+            assert_eq!(assigned(), before);
+            assert_eq!(files(), [1, 1, 1]);
+        }
         fs::remove_dir_all(&base).unwrap();
     }
 

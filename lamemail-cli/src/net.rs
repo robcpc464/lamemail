@@ -1,8 +1,11 @@
-use std::fmt;
+use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
+use std::task::{self, Poll, ready};
 use std::time::Duration;
+use std::{fmt, io};
 
 use anyhow::{Context, Result};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
@@ -22,6 +25,44 @@ impl fmt::Display for Refused {
 }
 
 impl std::error::Error for Refused {}
+
+pub const CLOSED: &str = "the server closed the connection";
+
+#[derive(Debug)]
+pub struct KeptOpen<S>(pub S);
+
+impl<S: AsyncRead + Unpin> AsyncRead for KeptOpen<S> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let filled = buf.filled().len();
+        ready!(Pin::new(&mut self.0).poll_read(cx, buf))?;
+        if buf.filled().len() == filled && buf.remaining() > 0 {
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::UnexpectedEof, CLOSED)));
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for KeptOpen<S> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
+}
 
 fn tls_config() -> Arc<ClientConfig> {
     static CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();

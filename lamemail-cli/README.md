@@ -201,6 +201,12 @@ first time, synchronizes only the folders with a kind and `sync` and, as
 `sync` without `--json`, names the kinds left without a folder when the
 assignment changed (see "The folders of an account").
 
+A sync removes only what a complete answer of the server no longer
+names. An answer the server refused (`NO`, `BAD`) or did not finish, the
+connection closed before its last line, fails the account, and so does a
+folder list without `INBOX`: nothing is removed and no assignment
+changes, the next sync tries again.
+
 ### `watch`
 
 `lamemail watch` keeps running and mirrors the accounts (all, or the given
@@ -220,7 +226,9 @@ ones) the way `sync` does, without being asked:
   not tried again: that account is no longer watched until `watch` starts
   again. When no account is left, `watch` ends with exit code 1
 - it pushes the journal and holds `.lock` while it writes, like `sync`;
-  `sync`, `watch` and `push` wait for each other
+  `sync`, `watch` and `push` wait for each other, and `watch` connects
+  only once `.lock` is free, so a new connection does not sit idle while
+  another account syncs
 - the development server has no `IDLE`: `watch` looks at the inbox's
   directory every second instead
 
@@ -592,6 +600,7 @@ waiting in the journal leaves it, and every copy with that `Message-ID` in
 the account's drafts folder is noted as `"action": "discard"`. `list`,
 `show` and `folder list` leave those copies out at once; the push expunges
 them with the folder's other changes (before its moves) and removes their
+files; copies the server refuses to expunge are reported and keep their
 files. A discard is the last word on a copy: a later `flag` or `move` of
 it is not noted, and a copy that is gone by the push counts as done. A
 version whose `APPEND` was still running when the draft was discarded is
@@ -630,8 +639,11 @@ one bundle: `SELECT`, the `UIDVALIDITY` of `.folder.json` checked, one
 `UID STORE` per change with all its UIDs, then `UID FETCH FLAGS` of exactly
 those messages, whose flags are written into their files. The pushed
 entries leave the journal, entries noted meanwhile stay. The server wins a
-conflict: an entry whose message is gone, or whose folder changed its
-`UIDVALIDITY`, is dropped and reported. Every change can be sent twice
+conflict: an entry whose message is gone, whose folder changed its
+`UIDVALIDITY`, or whose `UID STORE` the server refuses, is dropped and
+reported. A refusal the server marks `[UNAVAILABLE]` (RFC 5530) is no
+last word, for any command of the push: the push fails and the next one
+tries again. Every change can be sent twice
 without harm, so a push that breaks off is simply repeated. `sync` and
 `watch` push an account's entries before they sync it; offline the journal
 waits for the next push. Then the push saves the account's drafts (see
@@ -1086,7 +1098,9 @@ recipient. A draft is appended to the drafts folder flagged `SD`, and
 deleting one for good removes its file; `.uidnext` keeps a folder's next
 UID, so a UID is never given twice. `CREATE` makes the directory with a
 `.uidvalidity` of 1. `flag` renames the message file to
-its new letters. The option is meant for development and not
+its new letters; a folder with a `.readonly` file refuses that, as a
+server refuses flags in a read-only folder. The option is meant for
+development and not
 listed in `--help`, and it is refused together with the default sync
 folder `~/.lamemail`, so that a forgotten `$LAMEMAIL_DEV` cannot replace
 the real mirror.
@@ -1097,7 +1111,8 @@ the real mirror.
     ├── INBOX/                  a server folder: the directory path is the
     │   ├── .uidvalidity        IMAP name with `/` as delimiter; selectable
     │   ├── 101,SA.eml          only with a .uidvalidity file (a number)
-    │   └── 102.eml
+    │   ├── 102.eml
+    │   └── .readonly           optional: flag changes are refused here
     └── [Gmail]/                no .uidvalidity: \Noselect
         └── All Mail/ …
             └── .special        the folder's marking: sent, drafts, junk,

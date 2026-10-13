@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -161,6 +162,7 @@ impl Watch {
 
     async fn session(&mut self) -> Result<Infallible> {
         let access = server::access(self.dev.as_deref(), &self.id)?;
+        self.sync_folder_free().await?;
         let mut server = Server::connect(&self.account, access).await?;
         self.sync(&mut server, Scope::All).await?;
         self.retry = FIRST_RETRY;
@@ -180,12 +182,20 @@ impl Watch {
         }
     }
 
+    async fn sync_folder_free(&self) -> Result<()> {
+        self.lock().await.map(drop)
+    }
+
+    async fn lock(&self) -> Result<File> {
+        let dir = self.dir.clone();
+        tokio::task::spawn_blocking(move || store::wait_for_lock(&dir))
+            .await
+            .context("waiting for the sync folder")?
+    }
+
     async fn sync(&mut self, server: &mut Server, scope: Scope) -> Result<()> {
         let started = Timestamp::now();
-        let dir = self.dir.clone();
-        let _lock = tokio::task::spawn_blocking(move || store::wait_for_lock(&dir))
-            .await
-            .context("waiting for the sync folder")??;
+        let _lock = self.lock().await?;
         self.send(Line::Syncing {
             account: self.id.clone(),
             syncing: true,

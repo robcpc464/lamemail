@@ -445,13 +445,29 @@ impl FolderPush<'_> {
             .into_iter()
             .filter(|change| mailbox.keywords || !change.is_keyword());
         for change in changes {
+            let flagging = |entry: &Entry| entry.action == Action::Flag { change };
             let uids: Vec<u32> = valid
                 .iter()
-                .filter(|(entry, _)| entry.action == Action::Flag { change })
+                .filter(|(entry, _)| flagging(entry))
                 .map(|(_, uid)| *uid)
                 .collect();
-            if !uids.is_empty() {
-                server.store(&uids, change).await?;
+            if uids.is_empty() {
+                continue;
+            }
+            match server.store(&uids, change).await {
+                Ok(()) => {}
+                Err(err) if err.is::<Refused>() => {
+                    let reason = format!("{err:#}");
+                    let (refused, kept): (Vec<_>, Vec<_>) =
+                        valid.into_iter().partition(|(entry, _)| flagging(entry));
+                    valid = kept;
+                    outcome.dropped.extend(
+                        refused
+                            .into_iter()
+                            .map(|(entry, _)| (entry, reason.clone())),
+                    );
+                }
+                Err(err) => return Err(err),
             }
         }
         let uids: BTreeSet<u32> = valid.iter().map(|(_, uid)| *uid).collect();
@@ -842,6 +858,38 @@ mod tests {
             changes(dir),
             [("business/inbox/c-3.json".to_string(), Change::Seen)]
         );
+        fs::remove_dir_all(&fixture.base).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refused_flag_is_dropped_and_the_rest_of_the_folder_is_pushed() {
+        let fixture = Fixture::new("journal-refused");
+        let dir = &fixture.dir;
+        fs::write(fixture.dev.join("private/INBOX/2.eml"), "Subject: two\n\n").unwrap();
+        fixture.sync().await;
+        let inbox = store::index(&dir.join("private/inbox")).unwrap();
+        let [one, two] = [1, 2].map(|uid| store::relative(&inbox[&uid], dir));
+        flag::run(dir, Path::new(&one), Change::Flagged).unwrap();
+        flag::run(dir, Path::new(&two), Change::Flagged).unwrap();
+        moving::run(dir, Path::new(&two), "sent", false).unwrap();
+        fs::write(fixture.dev.join("private/INBOX/.readonly"), "").unwrap();
+
+        let pushed = fixture.push().await;
+        assert_eq!(pushed.pushed, 1);
+        let dropped: Vec<_> = pushed
+            .dropped
+            .iter()
+            .map(|dropped| (dropped.path.as_deref(), dropped.reason.as_str()))
+            .collect();
+        let reason = "UID STORE: the folder is read-only";
+        assert_eq!(
+            dropped,
+            [(Some(one.as_str()), reason), (Some(two.as_str()), reason)]
+        );
+        assert!(read(dir).unwrap().entries.is_empty());
+        assert!(!store::read_flags(&inbox[&1]).unwrap().flagged);
+        assert!(!inbox[&2].exists());
+        assert_eq!(store::index(&dir.join("private/sent")).unwrap().len(), 1);
         fs::remove_dir_all(&fixture.base).unwrap();
     }
 

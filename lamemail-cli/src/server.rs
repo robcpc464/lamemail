@@ -21,6 +21,7 @@ use crate::{keyring, smtp, store};
 const UIDVALIDITY_FILE: &str = ".uidvalidity";
 const UIDNEXT_FILE: &str = ".uidnext";
 const SPECIAL_FILE: &str = ".special";
+const READ_ONLY_FILE: &str = ".readonly";
 const DELIMITER: &str = "/";
 const SUBMITTED_DIR: &str = ".smtp";
 const DEV_REFUSED_DOMAIN: &str = ".invalid";
@@ -254,6 +255,9 @@ impl Server {
                     let Some(message) = selected.get_mut(uid) else {
                         continue;
                     };
+                    if message.path.with_file_name(READ_ONLY_FILE).exists() {
+                        bail!(Refused("UID STORE: the folder is read-only".to_string()));
+                    }
                     change.apply(&mut message.flags);
                     let renamed = message
                         .path
