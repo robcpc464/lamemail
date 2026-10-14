@@ -10,7 +10,7 @@ View {
     id: page
     readonly property bool compact: width < 900
     property bool trayMissing: false
-    readonly property list<SettingsSection> sections: [general, mailboxes, assistant, folderKinds, commandLine]
+    readonly property list<SettingsSection> sections: [general, mailboxes, assistant, folderKinds, commandLine, info]
     readonly property string section: (sections.find((entry) => entry.key === memory.section) ?? sections[0]).key
     signal closeRequested()
     signal accountAdded(string name, string message)
@@ -184,47 +184,29 @@ View {
             }
         }
 
-        Column {
-            id: about
+        Text {
+            id: version
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.leftMargin: page.compact ? 4 : 27
             anchors.rightMargin: page.compact ? 4 : 12
             anchors.bottomMargin: 14
-            spacing: 2
-
-            Repeater {
-                model: page.compact ? [Application.version]
-                                    : [Strings.wordmark + " " + Application.version, Strings.license,
-                                       Strings.noWarranty]
-
-                Text {
-                    required property string modelData
-
-                    width: about.width
-                    text: modelData
-                    color: aboutHover.hovered ? Theme.foreground : Theme.muted
-                    Behavior on color { ColorAnimation { duration: 120 } }
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                    horizontalAlignment: page.compact ? Text.AlignHCenter : Text.AlignLeft
-                    elide: Text.ElideRight
-                }
-            }
+            text: page.compact ? Application.version : Strings.version + " " + Application.version
+            color: versionHover.hovered ? Theme.foreground : Theme.muted
+            Behavior on color { ColorAnimation { duration: 120 } }
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize - 2
+            horizontalAlignment: page.compact ? Text.AlignHCenter : Text.AlignLeft
+            elide: Text.ElideRight
 
             HoverHandler {
-                id: aboutHover
+                id: versionHover
                 cursorShape: Qt.PointingHandCursor
             }
 
-            Tip {
-                visible: aboutHover.hovered && page.compact
-                text: [Strings.license, Strings.noWarranty].join(" · ")
-            }
-
             TapHandler {
-                onTapped: Qt.openUrlExternally(Strings.licenseLink)
+                onTapped: memory.section = info.key
             }
         }
 
@@ -267,7 +249,6 @@ View {
 
                     SettingRow {
                         title: Strings.theme
-                        hint: Strings.themeHint
 
                         Choice {
                             options: ["system", "light", "dark"]
@@ -303,6 +284,16 @@ View {
                     }
 
                     SettingRow {
+                        title: Strings.autostart
+
+                        Pill {
+                            text: Preferences.autostart ? Strings.on : Strings.off
+                            on: Preferences.autostart
+                            onClicked: Preferences.autostart = !Preferences.autostart
+                        }
+                    }
+
+                    SettingRow {
                         title: Strings.notifications
                         hint: Strings.notificationsHint
 
@@ -315,7 +306,7 @@ View {
 
                     SettingRow {
                         title: Strings.shadows
-                        hint: Preferences.shadowsAvailable ? Strings.shadowsHint : Strings.shadowsMissing
+                        hint: Preferences.shadowsAvailable ? "" : Strings.shadowsMissing
 
                         Pill {
                             readonly property bool shown: Preferences.shadows && Preferences.shadowsAvailable
@@ -329,7 +320,6 @@ View {
 
                     SettingRow {
                         title: Strings.flaggedFirst
-                        hint: Strings.flaggedFirstHint
 
                         Pill {
                             text: Preferences.flaggedFirst ? Strings.on : Strings.off
@@ -409,63 +399,13 @@ View {
                     id: aiRows
                     width: aiList.width
 
-                    Item {
-                        width: parent.width
-                        height: privacy.height + 16
-
-                        Rectangle {
-                            id: privacy
-                            x: 24
-                            y: 8
-                            width: parent.width - 48
-                            height: privacyRow.implicitHeight + 28
-                            radius: Theme.radius
-                            color: Qt.alpha(Theme.yellow, 0.1)
-                            border.width: 1
-                            border.color: Qt.alpha(Theme.yellow, 0.45)
-
-                            Row {
-                                id: privacyRow
-                                x: 14
-                                y: 14
-                                width: parent.width - 28
-                                spacing: 12
-
-                                Icon {
-                                    name: "junk"
-                                    size: 18
-                                    color: Theme.yellow
-                                }
-
-                                Column {
-                                    width: parent.width - 30
-                                    spacing: 4
-
-                                    Text {
-                                        text: Strings.aiPrivacyTitle
-                                        color: Theme.foregroundBright
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontSize + 1
-                                        font.bold: true
-                                    }
-
-                                    Text {
-                                        width: parent.width
-                                        text: Strings.aiPrivacy
-                                        color: Theme.foreground
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontSize
-                                        wrapMode: Text.Wrap
-                                        lineHeight: 1.15
-                                    }
-                                }
-                            }
-                        }
+                    Notice {
+                        title: Strings.aiPrivacyTitle
+                        text: Strings.aiPrivacy
                     }
 
                     SettingHeading {
                         title: Strings.aiModel
-                        hint: Strings.aiModelHint
                     }
 
                     Repeater {
@@ -683,6 +623,65 @@ View {
 
             WheelArea {
                 flickable: commandList
+            }
+        }
+
+        SettingsSection {
+            id: info
+            key: "info"
+            icon: "info"
+            title: Strings.infoSection
+            hint: Strings.infoHint
+            active: page.section === key
+
+            Flickable {
+                id: infoList
+                anchors.fill: parent
+                contentHeight: infoRows.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: SlimScrollBar {}
+
+                Column {
+                    id: infoRows
+                    width: infoList.width
+
+                    SettingRow {
+                        title: Strings.version
+                        hint: Application.version
+                    }
+
+                    SettingRow {
+                        title: Strings.sourceCode
+                        link: Strings.projectLink
+                    }
+
+                    SettingRow {
+                        title: Strings.issues
+                        link: Strings.issuesLink
+                    }
+
+                    SettingRow {
+                        title: Strings.licenseTitle
+                        hint: Strings.license
+                        link: Strings.licenseLink
+                    }
+
+                    SettingRow {
+                        title: Strings.thirdParty
+                        hint: Strings.thirdPartyHint
+                        divided: false
+                    }
+
+                    Notice {
+                        title: Strings.liabilityTitle
+                        text: Strings.liability
+                    }
+                }
+            }
+
+            WheelArea {
+                flickable: infoList
             }
         }
     }

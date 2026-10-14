@@ -286,8 +286,21 @@ fn programs(path: &OsStr, ollama_address: &str) -> Vec<Program> {
         command: None,
         ollama: model,
     };
+    let mut programs = match ollama::models(ollama_address) {
+        Some(models) if !models.is_empty() => models
+            .into_iter()
+            .map(|model| ollama(format!("ollama · {model}"), true, true, Some(model)))
+            .collect(),
+        Some(_) => vec![ollama("ollama".to_string(), true, true, None)],
+        None => vec![ollama(
+            "ollama".to_string(),
+            find("ollama", path).is_some(),
+            false,
+            None,
+        )],
+    };
     let claude = find("claude", path).is_some();
-    let mut programs = vec![Program {
+    programs.push(Program {
         program: "claude-code",
         name: "Claude Code".to_string(),
         url: CLAUDE_URL,
@@ -295,21 +308,7 @@ fn programs(path: &OsStr, ollama_address: &str) -> Vec<Program> {
         running: claude,
         command: claude.then(|| CLAUDE.to_string()),
         ollama: None,
-    }];
-    match ollama::models(ollama_address) {
-        Some(models) if !models.is_empty() => programs.extend(
-            models
-                .into_iter()
-                .map(|model| ollama(format!("ollama · {model}"), true, true, Some(model))),
-        ),
-        Some(_) => programs.push(ollama("ollama".to_string(), true, true, None)),
-        None => programs.push(ollama(
-            "ollama".to_string(),
-            find("ollama", path).is_some(),
-            false,
-            None,
-        )),
-    }
+    });
     programs
 }
 
@@ -543,11 +542,10 @@ mod tests {
         };
         let text = |text: &str| Some(text.to_string());
         let all = programs(dir.as_os_str(), &service);
-        assert_eq!(all[1].url, OLLAMA_URL);
+        assert_eq!(all[0].url, OLLAMA_URL);
         assert_eq!(
             known(all),
             [
-                ("Claude Code".to_string(), true, true, text(CLAUDE), None),
                 (
                     "ollama · llama3.2".to_string(),
                     true,
@@ -562,17 +560,18 @@ mod tests {
                     None,
                     text("qwen3:8b")
                 ),
+                ("Claude Code".to_string(), true, true, text(CLAUDE), None),
             ]
         );
 
         let (empty, _) = http_server(|_| (200, r#"{"models":[]}"#.to_string()));
         assert_eq!(
-            known(programs(dir.as_os_str(), &empty))[1],
+            known(programs(dir.as_os_str(), &empty))[0],
             ("ollama".to_string(), true, true, None, None)
         );
         let stopped = closed_address();
         assert_eq!(
-            known(programs(dir.as_os_str(), &stopped))[1],
+            known(programs(dir.as_os_str(), &stopped))[0],
             ("ollama".to_string(), false, false, None, None)
         );
         program("ollama");
@@ -580,8 +579,8 @@ mod tests {
         assert_eq!(
             known(programs(dir.as_os_str(), &stopped)),
             [
-                ("Claude Code".to_string(), false, false, None, None),
                 ("ollama".to_string(), true, false, None, None),
+                ("Claude Code".to_string(), false, false, None, None),
             ]
         );
         fs::remove_dir_all(&dir).unwrap();

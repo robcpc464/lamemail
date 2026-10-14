@@ -3,6 +3,10 @@
 #include "text.h"
 
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
 
@@ -20,6 +24,24 @@ constexpr int defaultWheelPixels = 120;
 const QStringList defaultFeedKinds { QStringLiteral("inbox"), QStringLiteral("sent"),
     QStringLiteral("drafts") };
 bool effectsModule = false;
+QStringList launchCommand;
+QString autostartEntry;
+
+bool writeAutostartEntry()
+{
+    if (launchCommand.isEmpty() || !QDir().mkpath(QFileInfo(autostartEntry).absolutePath()))
+        return false;
+    const QByteArray entry = QStringLiteral("[Desktop Entry]\n"
+                                            "Type=Application\n"
+                                            "Name=lamemail\n"
+                                            "Exec=%1\n"
+                                            "Icon=lamemail\n"
+                                            "Terminal=false\n")
+                                 .arg(desktopExec(launchCommand))
+                                 .toUtf8();
+    QSaveFile file(autostartEntry);
+    return file.open(QIODevice::WriteOnly) && file.write(entry) == entry.size() && file.commit();
+}
 
 }
 
@@ -44,6 +66,22 @@ void Preferences::setCloseToTray(bool on)
         return;
     QSettings().setValue(trayKey, on);
     emit closeToTrayChanged();
+}
+
+bool Preferences::autostart() const { return QFile::exists(autostartEntry); }
+
+void Preferences::setAutostart(bool on)
+{
+    if (on == autostart())
+        return;
+    if (on ? writeAutostartEntry() : QFile::remove(autostartEntry))
+        emit autostartChanged();
+}
+
+void Preferences::setLaunch(const QStringList& command, const QString& entry)
+{
+    launchCommand = command;
+    autostartEntry = entry;
 }
 
 bool Preferences::flaggedFirst() const { return QSettings().value(flaggedFirstKey, true).toBool(); }
@@ -133,4 +171,22 @@ QString downloadsPath(const QString& chosen)
     if (path == QLatin1Char('~') || path.startsWith(QLatin1String("~/")))
         path.replace(0, 1, QDir::homePath());
     return QDir::cleanPath(QDir::home().absoluteFilePath(path));
+}
+
+QString desktopExec(const QStringList& command)
+{
+    static const QRegularExpression reserved(QStringLiteral(R"([\s"'\\><~|&;$*?#()`])"));
+    QStringList words;
+    for (const QString& word : command) {
+        QString escaped;
+        for (const QChar letter : word) {
+            if (QStringView(u"\"`$\\").contains(letter))
+                escaped += QLatin1Char('\\');
+            escaped += letter;
+        }
+        words << (word.contains(reserved) ? QStringLiteral("\"%1\"").arg(escaped) : word);
+    }
+    return words.join(u' ')
+        .replace(u'\\', QLatin1String("\\\\"))
+        .replace(u'%', QLatin1String("%%"));
 }

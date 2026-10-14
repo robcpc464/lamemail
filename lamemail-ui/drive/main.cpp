@@ -1,4 +1,5 @@
 #include "lamemail.h"
+#include "preferences.h"
 #include "startup.h"
 
 #include <QCommandLineParser>
@@ -193,6 +194,8 @@ int main(int argc, char* argv[])
         folder.absoluteFilePath(QStringLiteral("settings")));
 
     qputenv("XDG_RUNTIME_DIR", folder.absoluteFilePath(QStringLiteral("runtime")).toLocal8Bit());
+    Preferences::setLaunch({ QCoreApplication::applicationFilePath(), QStringLiteral("--hidden") },
+        folder.absoluteFilePath(QStringLiteral("autostart/lamemail-ui.desktop")));
     Launcher launcher;
     for (const char* scheme : { "http", "https", "file" })
         QDesktopServices::setUrlHandler(QLatin1String(scheme), &launcher, "open");
@@ -200,7 +203,7 @@ int main(int argc, char* argv[])
     QQmlApplicationEngine engine;
     bool clean = true;
     QObject::connect(&engine, &QQmlEngine::warnings, &app, [&clean] { clean = false; });
-    QQuickWindow* window = lamemail::open(engine);
+    QQuickWindow* window = lamemail::open(engine, false);
     if (!window || !QTest::qWaitForWindowExposed(window))
         return 1;
     window->requestActivate();

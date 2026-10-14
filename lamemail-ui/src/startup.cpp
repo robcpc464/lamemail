@@ -28,13 +28,14 @@ QCommandLineOption dirOption()
         QStringLiteral("DIR") };
 }
 
-QQuickWindow* open(QQmlApplicationEngine& engine)
+QQuickWindow* open(QQmlApplicationEngine& engine, bool hidden)
 {
     QQmlComponent effects(&engine);
     effects.setData("import QtQuick\nimport QtQuick.Effects\nMultiEffect {}\n",
         QUrl(QStringLiteral("effects.qml")));
     Preferences::setShadowsAvailable(effects.isReady());
     engine.addImageProvider(QStringLiteral("tray"), new TrayImages);
+    engine.setInitialProperties({ { QStringLiteral("startHidden"), hidden } });
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));
     const QList<QObject*> roots = engine.rootObjects();
     return roots.isEmpty() ? nullptr : qobject_cast<QQuickWindow*>(roots.constFirst());

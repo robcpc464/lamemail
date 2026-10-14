@@ -158,7 +158,6 @@ Item {
 
         SettingRow {
             title: Strings.color
-            hint: Strings.colorHint
 
             Row {
                 spacing: 4

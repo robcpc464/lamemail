@@ -962,10 +962,11 @@ lamemail ai context-limit 50000
   ollama its service answers, for the others the same as `found`),
   `command`, the line that runs it without tools, and `ollama`, the
   model `ai set ollama` takes, each null when it does not apply:
-  `{"active":"ollama","command":null,"ollama":"gemma4:12b","custom":"llm -m mistral","programs":[{"program":"claude-code","name":"Claude Code","url":"https://claude.com/claude-code","found":true,"running":true,"command":"claude -p --tools \"\" --strict-mcp-config --output-format text","ollama":null},{"program":"ollama","name":"ollama · gemma4:12b","url":"https://ollama.com","found":true,"running":true,"command":null,"ollama":"gemma4:12b"}],"context_limit":20000,"context_limits":[10000,20000,50000,100000]}`.
+  `{"active":"ollama","command":null,"ollama":"gemma4:12b","custom":"llm -m mistral","programs":[{"program":"ollama","name":"ollama · gemma4:12b","url":"https://ollama.com","found":true,"running":true,"command":null,"ollama":"gemma4:12b"},{"program":"claude-code","name":"Claude Code","url":"https://claude.com/claude-code","found":true,"running":true,"command":"claude -p --tools \"\" --strict-mcp-config --output-format text","ollama":null}],"context_limit":20000,"context_limits":[10000,20000,50000,100000]}`.
   `ollama` has one entry per model of its service (`/api/tags`), or one
   without a model when the service lists none or does not answer
-  (`running` false, `found` then only when `ollama` is in the `PATH`).
+  (`running` false, `found` then only when `ollama` is in the `PATH`);
+  they come first, the local models before Claude Code.
   The known ones are Claude Code (`claude`, tools and MCP servers off)
   and every model of the ollama service; Simon Willison's `llm` was listed
   too until the user dropped it on 2026-10-04, a line for it still works

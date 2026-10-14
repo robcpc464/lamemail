@@ -9,6 +9,6 @@ namespace lamemail {
 
 void identify();
 QCommandLineOption dirOption();
-QQuickWindow* open(QQmlApplicationEngine& engine);
+QQuickWindow* open(QQmlApplicationEngine& engine, bool hidden);
 
 }

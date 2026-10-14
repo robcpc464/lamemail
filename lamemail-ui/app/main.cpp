@@ -1,12 +1,15 @@
 #include "instance.h"
 #include "lamemail.h"
+#include "preferences.h"
 #include "startup.h"
 
 #include <QCommandLineParser>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
+#include <QStandardPaths>
 
 int main(int argc, char* argv[])
 {
@@ -20,7 +23,9 @@ int main(int argc, char* argv[])
     parser.addHelpOption();
     parser.addVersionOption();
     const QCommandLineOption dir = lamemail::dirOption();
-    parser.addOption(dir);
+    const QCommandLineOption hidden(QStringLiteral("hidden"),
+        QStringLiteral("Start in the tray, without the window, when closing to the tray is on"));
+    parser.addOptions({ dir, hidden });
     parser.process(app);
     lamemail::setDir(lamemail::syncDir(parser.value(dir)));
 
@@ -28,8 +33,17 @@ int main(int argc, char* argv[])
     if (instance.handOver(token))
         return 0;
 
+    const QString image = qEnvironmentVariable("APPIMAGE");
+    QStringList launch { image.isEmpty() ? QCoreApplication::applicationFilePath() : image };
+    if (parser.isSet(dir))
+        launch << QStringLiteral("--dir") << QFileInfo(lamemail::dir()).absoluteFilePath();
+    launch << QStringLiteral("--hidden");
+    Preferences::setLaunch(launch,
+        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+            + QStringLiteral("/autostart/lamemail-ui.desktop"));
+
     QQmlApplicationEngine engine;
-    QQuickWindow* window = lamemail::open(engine);
+    QQuickWindow* window = lamemail::open(engine, parser.isSet(hidden));
     if (!window)
         return 1;
     instance.listen();

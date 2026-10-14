@@ -11,6 +11,7 @@ class Preferences : public QObject {
     QML_SINGLETON
     Q_PROPERTY(int wheelPixels READ wheelPixels WRITE setWheelPixels NOTIFY wheelPixelsChanged)
     Q_PROPERTY(bool closeToTray READ closeToTray WRITE setCloseToTray NOTIFY closeToTrayChanged)
+    Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged)
     Q_PROPERTY(bool flaggedFirst READ flaggedFirst WRITE setFlaggedFirst NOTIFY flaggedFirstChanged)
     Q_PROPERTY(QStringList feedKinds READ feedKinds WRITE setFeedKinds NOTIFY feedKindsChanged)
     Q_PROPERTY(bool shadows READ shadows WRITE setShadows NOTIFY shadowsChanged)
@@ -29,6 +30,9 @@ public:
     void setWheelPixels(int pixels);
     bool closeToTray() const;
     void setCloseToTray(bool on);
+    bool autostart() const;
+    void setAutostart(bool on);
+    static void setLaunch(const QStringList& command, const QString& entry);
     bool flaggedFirst() const;
     void setFlaggedFirst(bool on);
     QStringList feedKinds() const;
@@ -49,6 +53,7 @@ public:
 signals:
     void wheelPixelsChanged();
     void closeToTrayChanged();
+    void autostartChanged();
     void flaggedFirstChanged();
     void feedKindsChanged();
     void shadowsChanged();
@@ -58,3 +63,4 @@ signals:
 };
 
 QString downloadsPath(const QString& chosen);
+QString desktopExec(const QStringList& command);

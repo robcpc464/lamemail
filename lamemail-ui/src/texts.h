@@ -18,7 +18,18 @@ struct Texts {
     const char* wordmark;
     const char* license;
     const char* licenseLink;
-    const char* noWarranty;
+    const char* version;
+    const char* infoSection;
+    const char* infoHint;
+    const char* sourceCode;
+    const char* projectLink;
+    const char* issues;
+    const char* issuesLink;
+    const char* licenseTitle;
+    const char* thirdParty;
+    const char* thirdPartyHint;
+    const char* liabilityTitle;
+    const char* liability;
     const char* unread;
     const char* hits;
     const char* empty;
@@ -120,7 +131,6 @@ struct Texts {
     const char* generalSection;
     const char* generalHint;
     const char* theme;
-    const char* themeHint;
     const char* themeSystem;
     const char* themeLight;
     const char* themeDark;
@@ -128,12 +138,11 @@ struct Texts {
     const char* wheelHint;
     const char* closeToTray;
     const char* closeToTrayHint;
+    const char* autostart;
     const char* flaggedFirst;
-    const char* flaggedFirstHint;
     const char* feedKinds;
     const char* feedKindsHint;
     const char* shadows;
-    const char* shadowsHint;
     const char* shadowsMissing;
     const char* notifications;
     const char* notificationsHint;
@@ -174,7 +183,6 @@ struct Texts {
     const char* archiveByYear;
     const char* archiveByYearHint;
     const char* color;
-    const char* colorHint;
     const char* signature;
     const char* signatureHint;
     const char* context;
@@ -186,7 +194,6 @@ struct Texts {
     const char* aiSection;
     const char* aiHint;
     const char* aiModel;
-    const char* aiModelHint;
     const char* aiPrivacyTitle;
     const char* aiPrivacy;
     const char* aiProgram;
@@ -247,7 +254,18 @@ class Strings : public QObject {
     Q_PROPERTY(QString wordmark READ wordmark CONSTANT)
     Q_PROPERTY(QString license READ license CONSTANT)
     Q_PROPERTY(QString licenseLink READ licenseLink CONSTANT)
-    Q_PROPERTY(QString noWarranty READ noWarranty CONSTANT)
+    Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(QString infoSection READ infoSection CONSTANT)
+    Q_PROPERTY(QString infoHint READ infoHint CONSTANT)
+    Q_PROPERTY(QString sourceCode READ sourceCode CONSTANT)
+    Q_PROPERTY(QString projectLink READ projectLink CONSTANT)
+    Q_PROPERTY(QString issues READ issues CONSTANT)
+    Q_PROPERTY(QString issuesLink READ issuesLink CONSTANT)
+    Q_PROPERTY(QString licenseTitle READ licenseTitle CONSTANT)
+    Q_PROPERTY(QString thirdParty READ thirdParty CONSTANT)
+    Q_PROPERTY(QString thirdPartyHint READ thirdPartyHint CONSTANT)
+    Q_PROPERTY(QString liabilityTitle READ liabilityTitle CONSTANT)
+    Q_PROPERTY(QString liability READ liability CONSTANT)
     Q_PROPERTY(QString unread READ unread CONSTANT)
     Q_PROPERTY(QString hits READ hits CONSTANT)
     Q_PROPERTY(QString empty READ empty CONSTANT)
@@ -264,7 +282,6 @@ class Strings : public QObject {
     Q_PROPERTY(QString generalSection READ generalSection CONSTANT)
     Q_PROPERTY(QString generalHint READ generalHint CONSTANT)
     Q_PROPERTY(QString theme READ theme CONSTANT)
-    Q_PROPERTY(QString themeHint READ themeHint CONSTANT)
     Q_PROPERTY(QString themeSystem READ themeSystem CONSTANT)
     Q_PROPERTY(QString themeLight READ themeLight CONSTANT)
     Q_PROPERTY(QString themeDark READ themeDark CONSTANT)
@@ -272,12 +289,11 @@ class Strings : public QObject {
     Q_PROPERTY(QString wheelHint READ wheelHint CONSTANT)
     Q_PROPERTY(QString closeToTray READ closeToTray CONSTANT)
     Q_PROPERTY(QString closeToTrayHint READ closeToTrayHint CONSTANT)
+    Q_PROPERTY(QString autostart READ autostart CONSTANT)
     Q_PROPERTY(QString flaggedFirst READ flaggedFirst CONSTANT)
-    Q_PROPERTY(QString flaggedFirstHint READ flaggedFirstHint CONSTANT)
     Q_PROPERTY(QString feedKinds READ feedKinds CONSTANT)
     Q_PROPERTY(QString feedKindsHint READ feedKindsHint CONSTANT)
     Q_PROPERTY(QString shadows READ shadows CONSTANT)
-    Q_PROPERTY(QString shadowsHint READ shadowsHint CONSTANT)
     Q_PROPERTY(QString shadowsMissing READ shadowsMissing CONSTANT)
     Q_PROPERTY(QString notifications READ notifications CONSTANT)
     Q_PROPERTY(QString notificationsHint READ notificationsHint CONSTANT)
@@ -317,7 +333,6 @@ class Strings : public QObject {
     Q_PROPERTY(QString archiveByYear READ archiveByYear CONSTANT)
     Q_PROPERTY(QString archiveByYearHint READ archiveByYearHint CONSTANT)
     Q_PROPERTY(QString color READ color CONSTANT)
-    Q_PROPERTY(QString colorHint READ colorHint CONSTANT)
     Q_PROPERTY(QString signature READ signature CONSTANT)
     Q_PROPERTY(QString signatureHint READ signatureHint CONSTANT)
     Q_PROPERTY(QString context READ context CONSTANT)
@@ -329,7 +344,6 @@ class Strings : public QObject {
     Q_PROPERTY(QString aiSection READ aiSection CONSTANT)
     Q_PROPERTY(QString aiHint READ aiHint CONSTANT)
     Q_PROPERTY(QString aiModel READ aiModel CONSTANT)
-    Q_PROPERTY(QString aiModelHint READ aiModelHint CONSTANT)
     Q_PROPERTY(QString aiPrivacyTitle READ aiPrivacyTitle CONSTANT)
     Q_PROPERTY(QString aiPrivacy READ aiPrivacy CONSTANT)
     Q_PROPERTY(QString aiProgram READ aiProgram CONSTANT)
@@ -437,7 +451,18 @@ public:
     QString wordmark() const { return QString::fromUtf8(texts().wordmark); }
     QString license() const { return QString::fromUtf8(texts().license); }
     QString licenseLink() const { return QString::fromUtf8(texts().licenseLink); }
-    QString noWarranty() const { return QString::fromUtf8(texts().noWarranty); }
+    QString version() const { return QString::fromUtf8(texts().version); }
+    QString infoSection() const { return QString::fromUtf8(texts().infoSection); }
+    QString infoHint() const { return QString::fromUtf8(texts().infoHint); }
+    QString sourceCode() const { return QString::fromUtf8(texts().sourceCode); }
+    QString projectLink() const { return QString::fromUtf8(texts().projectLink); }
+    QString issues() const { return QString::fromUtf8(texts().issues); }
+    QString issuesLink() const { return QString::fromUtf8(texts().issuesLink); }
+    QString licenseTitle() const { return QString::fromUtf8(texts().licenseTitle); }
+    QString thirdParty() const { return QString::fromUtf8(texts().thirdParty); }
+    QString thirdPartyHint() const { return QString::fromUtf8(texts().thirdPartyHint); }
+    QString liabilityTitle() const { return QString::fromUtf8(texts().liabilityTitle); }
+    QString liability() const { return QString::fromUtf8(texts().liability); }
     QString unread() const { return QString::fromUtf8(texts().unread); }
     QString hits() const { return QString::fromUtf8(texts().hits); }
     QString empty() const { return QString::fromUtf8(texts().empty); }
@@ -454,7 +479,6 @@ public:
     QString generalSection() const { return QString::fromUtf8(texts().generalSection); }
     QString generalHint() const { return QString::fromUtf8(texts().generalHint); }
     QString theme() const { return QString::fromUtf8(texts().theme); }
-    QString themeHint() const { return QString::fromUtf8(texts().themeHint); }
     QString themeSystem() const { return QString::fromUtf8(texts().themeSystem); }
     QString themeLight() const { return QString::fromUtf8(texts().themeLight); }
     QString themeDark() const { return QString::fromUtf8(texts().themeDark); }
@@ -462,12 +486,11 @@ public:
     QString wheelHint() const { return QString::fromUtf8(texts().wheelHint); }
     QString closeToTray() const { return QString::fromUtf8(texts().closeToTray); }
     QString closeToTrayHint() const { return QString::fromUtf8(texts().closeToTrayHint); }
+    QString autostart() const { return QString::fromUtf8(texts().autostart); }
     QString flaggedFirst() const { return QString::fromUtf8(texts().flaggedFirst); }
-    QString flaggedFirstHint() const { return QString::fromUtf8(texts().flaggedFirstHint); }
     QString feedKinds() const { return QString::fromUtf8(texts().feedKinds); }
     QString feedKindsHint() const { return QString::fromUtf8(texts().feedKindsHint); }
     QString shadows() const { return QString::fromUtf8(texts().shadows); }
-    QString shadowsHint() const { return QString::fromUtf8(texts().shadowsHint); }
     QString shadowsMissing() const { return QString::fromUtf8(texts().shadowsMissing); }
     QString notifications() const { return QString::fromUtf8(texts().notifications); }
     QString notificationsHint() const { return QString::fromUtf8(texts().notificationsHint); }
@@ -507,7 +530,6 @@ public:
     QString archiveByYear() const { return QString::fromUtf8(texts().archiveByYear); }
     QString archiveByYearHint() const { return QString::fromUtf8(texts().archiveByYearHint); }
     QString color() const { return QString::fromUtf8(texts().color); }
-    QString colorHint() const { return QString::fromUtf8(texts().colorHint); }
     QString signature() const { return QString::fromUtf8(texts().signature); }
     QString signatureHint() const { return QString::fromUtf8(texts().signatureHint); }
     QString context() const { return QString::fromUtf8(texts().context); }
@@ -519,7 +541,6 @@ public:
     QString aiSection() const { return QString::fromUtf8(texts().aiSection); }
     QString aiHint() const { return QString::fromUtf8(texts().aiHint); }
     QString aiModel() const { return QString::fromUtf8(texts().aiModel); }
-    QString aiModelHint() const { return QString::fromUtf8(texts().aiModelHint); }
     QString aiPrivacyTitle() const { return QString::fromUtf8(texts().aiPrivacyTitle); }
     QString aiPrivacy() const { return QString::fromUtf8(texts().aiPrivacy); }
     QString aiProgram() const { return QString::fromUtf8(texts().aiProgram); }

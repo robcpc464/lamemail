@@ -36,8 +36,11 @@ captured as PNG. It needs Qt Test as well; `--help` lists the steps.
 ## Usage
 
 ```sh
-lamemail-ui [--dir <path>]
+lamemail-ui [--dir <path>] [--hidden]
 ```
+
+`--hidden` starts lamemail in the tray without its window while "Close
+to tray" is on; the start at login uses it.
 
 `lamemail-ui` shows the sync folder as one feed over the full window: every
 mail of the folders `lamemail` finds, one row per mail (copies once),
@@ -304,9 +307,8 @@ failed.
 - Settings (gear icon or `Ctrl+,`, back with `Esc`): sections in a
   sidebar (`↑` `↓` switch, the last one is remembered; below 900 px the
   sidebar shrinks to its icons), each with a title, a hint and its rows;
-  the version of lamemail stands at the bottom of the sidebar, with the
-  licence and "No warranty" below it (a tooltip while the sidebar is
-  narrow); a click opens the text of the GPL:
+  the version of lamemail stands at the bottom of the sidebar, and a
+  click on it opens "Info":
   - General: the theme (System, the omarchy theme; Light or Dark,
     lamemail's own palettes), pixels per mouse wheel notch (120 unless changed), for the
     feed, the mail text and the folder table; a notch starts a flick that
@@ -319,6 +321,11 @@ failed.
     over D-Bus as a StatusNotifierItem (the omarchy shell, KDE and Waybar
     show those) without Qt Widgets; where no tray is found Qt prints that
     it would need Qt Widgets, which lamemail leaves out.
+    "Autostart" (off unless switched on) writes `lamemail-ui.desktop`
+    into `~/.config/autostart`, which the desktop starts at login (on
+    Omarchy through uwsm); off removes it. The entry starts the running
+    program with `--hidden`, the AppImage where it lies, and the window
+    shows unless "Close to tray" is on and a tray is there.
     "Notifications" (on unless changed) announces new mail on the desktop
     while the window is in the background.
     "Shadows" (on unless changed) puts a soft shadow under menus, tooltips
@@ -357,13 +364,14 @@ failed.
     consequences; a local model such as Ollama keeps mail on the
     computer), then two parts under headings of their own. "Model": every
     AI program and ollama model lamemail knows (`lamemail ai show --json`),
+    the ollama models first, then Claude Code next to the custom command,
     one row each with the link to get it and below the name the command
     line it runs (Claude Code) or a description, grey with "Not found"
     when it is missing, "Not running" for ollama when its service does not
     answer, the others with a switch: on sets it (`lamemail ai set
     claude-code` or `ai set ollama <model>`), off removes it (`ai
     remove`); at most one is on, and none until the user switches one on.
-    Below, "Custom program" holds the command line of the user's own
+    Below, "Custom command" holds the command line of the user's own
     (`custom` of `ai show --json`), kept while another is on, and always a
     switch: on runs `ai set custom <command>` with the line in the field,
     off `ai remove`, dimmed while the field is empty; "Save" applies a
@@ -386,6 +394,10 @@ failed.
     border, the arrow at the end of a row resets the kind to its defaults
   - CLI: every command of `lamemail` with its usage, arguments and help,
     read from `lamemail commands --json`
+  - Info: the version, links to the source code and to the issues on
+    GitHub, the licence (GPL-3.0-or-later, its text at gnu.org), the
+    software used (Qt, the Lucide icons, the Rust libraries) and a
+    notice on warranty and liability
 
   What only concerns the UI (the mouse wheel, the tray, notifications, the download folder, the kinds in the feed, the detail layout) is kept in
   `~/.config/lamemail/lamemail-ui.conf`; what concerns mail (folder styles)
@@ -425,4 +437,4 @@ failed.
   `lamemail-ui.desktop` into `~/.local/share/applications/` (the app
   menu) and `lamemail.svg` into
   `~/.local/share/icons/hicolor/scalable/apps/`; `./dev uninstall`
-  removes exactly these four files
+  removes exactly these four files and the entry of "Autostart"

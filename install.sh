@@ -8,6 +8,7 @@ data="${XDG_DATA_HOME:-$HOME/.local/share}"
 desktop="$data/applications/lamemail-ui.desktop"
 icon="$data/icons/hicolor/scalable/apps/lamemail.svg"
 licenses="$data/licenses/lamemail"
+autostart="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/lamemail-ui.desktop"
 
 die() {
   printf 'error: %s\n' "$*" >&2
@@ -19,9 +20,10 @@ running() {
 }
 
 uninstall() {
-  rm -f "$bin/lamemail" "$bin/lamemail-ui" "$desktop" "$icon"
+  rm -f "$bin/lamemail" "$bin/lamemail-ui" "$desktop" "$icon" "$autostart"
   rm -rf "$licenses"
   echo "removed lamemail and lamemail-ui from $bin, the menu entry, the icon and the licences from $data"
+  echo "and the start at login from ${autostart%/*}"
   echo "kept: the sync folder (~/.lamemail), the keyring passwords and ~/.config/lamemail"
 }
 

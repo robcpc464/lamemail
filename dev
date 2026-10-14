@@ -14,6 +14,7 @@ BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 APPS="$DATA/applications"
 ICONS="$DATA/icons/hicolor/scalable/apps"
+AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/lamemail-ui.desktop"
 DIST="$ROOT/dist"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -89,8 +90,9 @@ cmd_install() {
 }
 
 cmd_uninstall() {
-  rm -f "$BIN/lamemail" "$BIN/lamemail-ui" "$APPS/lamemail-ui.desktop" "$ICONS/lamemail.svg"
-  echo "removed lamemail and lamemail-ui from $BIN, the menu entry from $APPS and the icon from $ICONS"
+  rm -f "$BIN/lamemail" "$BIN/lamemail-ui" "$APPS/lamemail-ui.desktop" "$ICONS/lamemail.svg" "$AUTOSTART"
+  echo "removed lamemail and lamemail-ui from $BIN, the menu entry from $APPS, the icon from $ICONS"
+  echo "and the start at login from ${AUTOSTART%/*}"
   echo "kept: the sync folder (~/.lamemail), the keyring passwords and ~/.config/lamemail"
 }
 

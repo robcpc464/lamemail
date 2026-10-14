@@ -2123,6 +2123,38 @@ exit "$(cat "$dir/code")"
         QVERIFY(!Preferences().shadows());
     }
 
+    void autostartIsAnEntryInTheAutostartFolder()
+    {
+        QTemporaryDir config;
+        const QString entry = config.filePath(QStringLiteral("autostart/lamemail-ui.desktop"));
+        const auto restore = qScopeGuard([] { Preferences::setLaunch({ }, { }); });
+        Preferences::setLaunch(
+            { QStringLiteral("/opt/my apps/lamemail-ui"), QStringLiteral("--hidden") }, entry);
+
+        Preferences preferences;
+        QSignalSpy changed(&preferences, &Preferences::autostartChanged);
+        QVERIFY(!preferences.autostart());
+        preferences.setAutostart(true);
+        preferences.setAutostart(true);
+        QCOMPARE(changed.count(), 1);
+        QFile file(entry);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("\nExec=\"/opt/my apps/lamemail-ui\" --hidden\n"));
+
+        preferences.setAutostart(false);
+        QCOMPARE(changed.count(), 2);
+        QVERIFY(!QFile::exists(entry));
+    }
+
+    void desktopExecQuotesWhatTheSpecificationReserves()
+    {
+        QCOMPARE(
+            desktopExec({ QStringLiteral("/usr/bin/lamemail-ui"), QStringLiteral("--hidden") }),
+            QStringLiteral("/usr/bin/lamemail-ui --hidden"));
+        QCOMPARE(desktopExec({ QStringLiteral("/a b/$x\"y"), QStringLiteral("50%") }),
+            QStringLiteral("\"/a b/\\\\$x\\\\\"y\" 50%%"));
+    }
+
     void instanceHandsOverToTheOneOfTheSameFolder()
     {
         QTemporaryDir runtime;

@@ -7,7 +7,6 @@ import Lamemail
 
 Window {
     id: root
-    visible: true
     width: 1000
     height: 720
     minimumWidth: 480
@@ -15,6 +14,7 @@ Window {
     title: Strings.wordmark
     color: Theme.background
 
+    required property bool startHidden
     property var views: ["feed"]
     readonly property string view: views[views.length - 1]
     property var pending: null
@@ -404,6 +404,8 @@ Window {
     }
 
     Component.onCompleted: {
+        if (!root.startHidden || !root.toTray)
+            root.show()
         Ai.reload()
         feed.reload()
         journal.reload()
