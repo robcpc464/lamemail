@@ -172,6 +172,19 @@ cmd_ui() {
   die "$CLASS did not open a window, see lamemail-ui/build/ui.log"
 }
 
+cmd_notes() {
+  local version=${1:-} section
+  [[ -n $version ]] || die "usage: ./dev notes <version>"
+  section=$(awk -v heading="## $version" '
+    $0 == heading { found = 1; next }
+    found && /^## / { exit }
+    found && (started || NF) { started = 1; print }
+  ' "$ROOT/CHANGELOG.md")
+  [[ -n $section ]] || die "CHANGELOG.md has no section ## $version"
+  printf '%s\n\n' "$section"
+  cat "$ROOT/.github/release.md"
+}
+
 usage() {
   cat <<'EOF'
 usage: ./dev <command>
@@ -185,6 +198,8 @@ usage: ./dev <command>
   uninstall            remove what install put there; mail, passwords and UI settings stay
   release              build, then pack both programs, the menu entry, the icon and the licences of everything
                        in them into dist/lamemail-<architecture>-linux.tar.gz, with its checksum, for install.sh
+  notes <version>      print the release notes of a version: its section of CHANGELOG.md, then .github/release.md;
+                       fails when the section is missing
   drive <step>...      run the UI without a display on a fresh copy of testdata/, so ./dev ui keeps its data,
                        one step per argument, captures in
                        lamemail-ui/build/captures/: size <w> <h>, click <x> <y> [ctrl|right], move <x> <y>,
@@ -203,6 +218,7 @@ case $cmd in
   install) cmd_install ;;
   uninstall) cmd_uninstall ;;
   release) cmd_release ;;
+  notes) cmd_notes "$@" ;;
   drive) cmd_drive "$@" ;;
   ui) cmd_ui ;;
   help | -h | --help) usage ;;
