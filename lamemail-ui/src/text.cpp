@@ -56,6 +56,134 @@ QString shortLink(const QString& address)
     return address.left(kept) + QChar(ellipsis);
 }
 
+QString appendLinked(LinkedText& linked, const QString& text)
+{
+    static const QRegularExpression link(
+        QStringLiteral(
+            R"((?<![\w.%+-])([\w.%+-]+@(?:[\w-]+\.)+[^\W\d_]{2,})|\b(?:https?://|www\.)[^\s<>"]+)"),
+        QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+    QString shownText;
+    qsizetype done = 0;
+    for (auto matches = link.globalMatch(text); matches.hasNext();) {
+        const auto match = matches.next();
+        const QString mail = match.captured(1);
+        const QString found = mail.isEmpty() ? withoutTrailingPunctuation(match.captured()) : mail;
+        const QUrl url = mail.isEmpty() ? target(found) : QUrl(QStringLiteral("mailto:") + mail);
+        if (url.isEmpty())
+            continue;
+        const QString address = url.toString(QUrl::FullyEncoded);
+        const QString shown = mail.isEmpty() ? shortLink(found) : found;
+        if (shown != found)
+            linked.shortened.append(address);
+        const QString before = text.mid(done, match.capturedStart() - done);
+        linked.html += before.toHtmlEscaped();
+        linked.html += QStringLiteral("<a href=\"%1\">%2</a>")
+                           .arg(address.toHtmlEscaped(), shown.toHtmlEscaped());
+        shownText += before + shown;
+        done = match.capturedStart() + found.size();
+    }
+    linked.html += text.mid(done).toHtmlEscaped();
+    return shownText + text.mid(done);
+}
+
+bool isWide(char32_t c)
+{
+    return (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf)
+        || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff)
+        || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)
+        || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff)
+        || (c >= 0x20000 && c <= 0x3fffd);
+}
+
+qsizetype columns(const QString& text)
+{
+    qsizetype width = 0;
+    for (const char32_t c : text.toUcs4()) {
+        if (!QChar::isMark(c))
+            width += isWide(c) ? 2 : 1;
+    }
+    return width;
+}
+
+bool isRow(const QString& line)
+{
+    return line.size() > 1 && line.startsWith(u'|') && line.endsWith(u'|');
+}
+
+bool isRule(const QString& line)
+{
+    static const QRegularExpression rule(QStringLiteral(R"(^\|(?:-+\|)+$)"));
+    return rule.match(line).hasMatch();
+}
+
+qsizetype tableEnd(const QStringList& lines, qsizetype at)
+{
+    if (at + 1 >= lines.size() || !isRow(lines.at(at)) || !isRule(lines.at(at + 1)))
+        return at;
+    qsizetype end = at + 2;
+    while (end < lines.size() && isRow(lines.at(end)))
+        ++end;
+    return end;
+}
+
+QStringList cells(const QString& row)
+{
+    QStringList cells;
+    QString cell;
+    for (qsizetype at = 1; at < row.size() - 1; ++at) {
+        if (row.at(at) == u'|' && row.at(at - 1) != u'\\') {
+            cells.append(cell.trimmed());
+            cell.clear();
+        } else {
+            cell += row.at(at);
+        }
+    }
+    cells.append(cell.trimmed());
+    return cells;
+}
+
+struct Cell {
+    QString html;
+    qsizetype width;
+};
+
+void appendTable(LinkedText& linked, const QStringList& lines)
+{
+    QList<QList<Cell>> rows;
+    QList<qsizetype> widths;
+    for (qsizetype at = 0; at < lines.size(); ++at) {
+        QList<Cell> row;
+        if (at != 1) {
+            for (const QString& text : cells(lines.at(at))) {
+                LinkedText cell;
+                const qsizetype width = columns(appendLinked(cell, text));
+                linked.shortened += cell.shortened;
+                if (row.size() == widths.size())
+                    widths.append(0);
+                widths[row.size()] = std::max(widths.at(row.size()), width);
+                row.append({ cell.html, width });
+            }
+        }
+        rows.append(row);
+    }
+    for (qsizetype at = 0; at < rows.size(); ++at) {
+        if (at > 0)
+            linked.html += u'\n';
+        linked.html += u'|';
+        if (at == 1) {
+            for (const qsizetype width : widths)
+                linked.html += QString(width + 2, u'-') + u'|';
+            continue;
+        }
+        const QList<Cell>& row = rows.at(at);
+        for (qsizetype column = 0; column < row.size(); ++column) {
+            const Cell& cell = row.at(column);
+            linked.html += u' ' + cell.html + QString(widths.at(column) - cell.width, u' ')
+                + QStringLiteral(" |");
+        }
+    }
+}
+
 }
 
 QString person(const Addr& addr)
@@ -164,29 +292,20 @@ QString tildePath(const QString& path)
 
 LinkedText linkedText(const QString& text)
 {
-    static const QRegularExpression link(
-        QStringLiteral(
-            R"((?<![\w.%+-])([\w.%+-]+@(?:[\w-]+\.)+[^\W\d_]{2,})|\b(?:https?://|www\.)[^\s<>"]+)"),
-        QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
     LinkedText linked { QStringLiteral("<span style=\"white-space: pre-wrap\">"), { } };
-    qsizetype done = 0;
-    for (auto matches = link.globalMatch(text); matches.hasNext();) {
-        const auto match = matches.next();
-        const QString mail = match.captured(1);
-        const QString found = mail.isEmpty() ? withoutTrailingPunctuation(match.captured()) : mail;
-        const QUrl url = mail.isEmpty() ? target(found) : QUrl(QStringLiteral("mailto:") + mail);
-        if (url.isEmpty())
-            continue;
-        const QString address = url.toString(QUrl::FullyEncoded);
-        const QString shown = mail.isEmpty() ? shortLink(found) : found;
-        if (shown != found)
-            linked.shortened.append(address);
-        linked.html += text.mid(done, match.capturedStart() - done).toHtmlEscaped();
-        linked.html += QStringLiteral("<a href=\"%1\">%2</a>")
-                           .arg(address.toHtmlEscaped(), shown.toHtmlEscaped());
-        done = match.capturedStart() + found.size();
+    const QStringList lines = text.split(u'\n');
+    for (qsizetype at = 0; at < lines.size();) {
+        if (at > 0)
+            linked.html += u'\n';
+        const qsizetype end = tableEnd(lines, at);
+        if (end > at) {
+            appendTable(linked, lines.mid(at, end - at));
+            at = end;
+        } else {
+            appendLinked(linked, lines.at(at++));
+        }
     }
-    linked.html += text.mid(done).toHtmlEscaped() + QStringLiteral("</span>");
+    linked.html += QStringLiteral("</span>");
     return linked;
 }
 

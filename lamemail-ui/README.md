@@ -141,15 +141,21 @@ failed.
   address of 60 characters or more is shown shortened, its host in full
   and 50 characters in all, then `…`; the pointer on it shows the whole
   address, the click opens it, and the text of the mail keeps it. Copying
-  by selecting takes what is shown, so the shortened form. Mail
+  by selecting takes what is shown, so the shortened form. A pipe table
+  of the text (a `| … |` line, `|---|` under it, more `| … |` lines) has
+  its cells filled with spaces to the width of their column, in the
+  monospace font the columns line up, and copying takes them aligned;
+  the text of the mail keeps the table as it came. Mail
   addresses are links as well: a click starts a new mail to the address,
   from the account of the mail unless the contacts know a better one. A click
   on an attachment fetches it with `lamemail attachment` into
   `$XDG_RUNTIME_DIR/lamemail/attachments` and opens it through the XDG
   desktop portal: with the default program, else the system's "Open with"
   dialog; without a portal with `xdg-open`. The paperclip pulses
-  meanwhile, a failure comes as a toast. The chip with the download
-  arrow after them saves all of them into the download folder of the
+  meanwhile, a failure comes as a toast. Images the mail's HTML embeds
+  (`inline`) stand behind one chip with the image icon and their count,
+  a click shows them as chips too. The chip with the download
+  arrow after the others saves all of those into the download folder of the
   settings (`lamemail attachment --to`), never asking for a folder; a
   name already there gets ` (1)`, the toast counts the files and names
   the folder. The reply area is always open and has the focus:

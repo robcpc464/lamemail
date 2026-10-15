@@ -199,6 +199,11 @@ Nächstes Treffen: Dienstag in zwei Wochen, 10:00, Raum Berlin.
 Viele Grüße
 Paul
 """
+NEWSLETTER_IMAGES = [
+    ("logo@shop.example.com", "logo.png", png(160, 48, (34, 34, 34), [((16, 16, 144, 32), (255, 255, 255))])),
+    ("social@shop.example.com", "social.png", png(24, 24, (59, 89, 152), [((8, 8, 16, 16), (255, 255, 255))])),
+    ("photos@shop.example.com", "photos.png", png(24, 24, (193, 53, 132), [((6, 6, 18, 18), (255, 255, 255))])),
+]
 NEWSLETTER = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>10 things you missed</title>
 <style>body { margin: 0 } .button { background: #222; color: #fff; padding: 12px 24px }</style></head>
@@ -208,7 +213,7 @@ NEWSLETTER = """<!DOCTYPE html>
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" role="presentation">
 <tr>
-<td><a href="https://shop.example.com/?utm_source=newsletter"><img src="https://shop.example.com/logo.png" alt="Example Shop" width="160"></a></td>
+<td><a href="https://shop.example.com/?utm_source=newsletter"><img src="cid:logo@shop.example.com" alt="Example Shop" width="160"></a></td>
 <td align="right"><a href="https://shop.example.com/view/2026-39">View in browser</a></td>
 </tr>
 <tr><td colspan="2">
@@ -229,8 +234,8 @@ of our workshop. <a href="https://shop.example.com/autumn?utm_source=newsletter"
 </td></tr>
 <tr><td colspan="2" align="center" style="padding:24px"><a class="button" href="https://shop.example.com/sale?utm_source=newsletter&amp;utm_medium=email">Shop now</a></td></tr>
 <tr><td colspan="2" align="center">
-<a href="https://social.example.com/shop"><img src="https://shop.example.com/icons/social.png" width="24" height="24"></a>&nbsp;
-<a href="https://photos.example.com/shop"><img src="https://shop.example.com/icons/photos.png" width="24" height="24"></a>
+<a href="https://social.example.com/shop"><img src="cid:social@shop.example.com" width="24" height="24"></a>&nbsp;
+<a href="https://photos.example.com/shop"><img src="cid:photos@shop.example.com" width="24" height="24"></a>
 </td></tr>
 <tr><td colspan="2"><p style="font-size:12px; color:#888">You receive this mail because you subscribed at shop.example.com.<br>
 <a href="https://shop.example.com/unsubscribe?id=4711">Unsubscribe</a> &middot; <a href="mailto:help@shop.example.com">help@shop.example.com</a><br>
@@ -242,8 +247,8 @@ Example Shop GmbH, Musterstra&szlig;e 1, 20095 Hamburg</p></td></tr>
 """
 
 
-def mail(days, clock, sender, to, subject, text, cc=(), reply=None, att=(), seen=True, flagged=False, folder=None, ago=None, html=False, also=()):
-    return dict(days=days, clock=clock, sender=sender, to=to, subject=subject, text=text, cc=cc, reply=reply, att=att, seen=seen, flagged=flagged, folder=folder, ago=ago, html=html, also=also)
+def mail(days, clock, sender, to, subject, text, cc=(), reply=None, att=(), seen=True, flagged=False, folder=None, ago=None, html=False, also=(), shown=()):
+    return dict(days=days, clock=clock, sender=sender, to=to, subject=subject, text=text, cc=cc, reply=reply, att=att, seen=seen, flagged=flagged, folder=folder, ago=ago, html=html, also=also, shown=shown)
 
 
 RELEASE = """Hallo Robin,
@@ -322,7 +327,7 @@ PRIVATE = [
         mail(29, "09:02", "tom", ["me"], "Re: Fotos", "Brilliant, thanks! The third one is going on the wall.\n", reply=2),
     ],
     [
-        mail(1, "06:00", "shop", ["me"], "Your weekly newsletter: 10 things you missed", "This week: the new autumn collection, free shipping until Sunday and a look behind the scenes.\n", html=NEWSLETTER, seen=False),
+        mail(1, "06:00", "shop", ["me"], "Your weekly newsletter: 10 things you missed", "This week: the new autumn collection, free shipping until Sunday and a look behind the scenes.\n", html=NEWSLETTER, seen=False, shown=NEWSLETTER_IMAGES),
         mail(8, "06:00", "shop", ["me"], "Your weekly newsletter: back to school", "Notebooks, bags and everything for the first week.\n\n" + LOREM * 5 + "\n", html=True),
         mail(15, "06:00", "shop", ["me"], "Your weekly newsletter: last summer sale", "Up to 50% on selected items.\n\n" + LOREM * 4 + "\n", html=True, also=["[gmail]/all mail"]),
         mail(22, "06:00", "shop", ["me"], "Your weekly newsletter: new arrivals", LOREM * 5 + "\n", html=True, folder="trash"),
@@ -500,6 +505,8 @@ def compose(account, step, when, msg, previous):
         out.set_content(f"<html><body>{as_html(msg['body'])}</body></html>", subtype="html")
     else:
         out.set_content(msg["body"])
+    for cid, name, content in step["shown"]:
+        out.add_related(content, maintype="image", subtype="png", cid=f"<{cid}>", filename=name, disposition="inline")
     for name, kind, content in step["att"]:
         maintype, subtype = kind.split("/", 1)
         data = content if isinstance(content, bytes) else bytes(content)

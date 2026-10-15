@@ -2,12 +2,19 @@ use jiff::Timestamp;
 use jiff::tz::{Offset, TimeZone};
 use mail_parser::{Address, HeaderValue, Message, MessageParser, MimeHeaders, PartType};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use crate::html;
 
 pub const FORMAT_VERSION: u32 = 1;
 const MINUTE_CHARS: usize = 16;
-const LINE_BREAK_TAGS: &[&str] = &["<br>", "<br/>", "<br />"];
+const UNLISTED: &[&str] = &[
+    "text/x-amp-html",
+    "application/pkcs7-signature",
+    "application/x-pkcs7-signature",
+    "application/pgp-signature",
+];
+const CID: &str = "cid:";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MailFile {
@@ -83,6 +90,8 @@ pub struct Attachment {
     #[serde(rename = "type")]
     pub content_type: String,
     pub size: u64,
+    #[serde(default)]
+    pub inline: bool,
 }
 
 pub struct Meta<'a> {
@@ -144,20 +153,31 @@ fn fill_headers(file: &mut MailFile, message: &Message<'_>) {
     file.to = message.all_to().flat_map(|a| addrs(Some(a))).collect();
     file.cc = message.all_cc().flat_map(|a| addrs(Some(a))).collect();
     file.bcc = message.all_bcc().flat_map(|a| addrs(Some(a))).collect();
-    file.subject = message.subject().unwrap_or_default().to_string();
+    file.subject = one_line(message.subject().unwrap_or_default());
+}
+
+fn one_line(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn fill_body(file: &mut MailFile, message: &Message<'_>) {
     let paired = message.text_body.len() == message.html_body.len();
     let mut source = None;
     let mut texts = Vec::new();
-    for (index, part) in message.text_bodies().enumerate() {
+    for (index, part) in message.html_bodies().enumerate() {
         let (from, text) = match &part.body {
-            PartType::Html(html) => (BodySource::Html, html::to_text(html)),
-            PartType::Text(text) => match paired.then(|| in_html(message, index, text)).flatten() {
-                Some(converted) => (BodySource::Html, converted),
-                None => (BodySource::Text, text.replace("\r\n", "\n")),
+            PartType::Html(html) => match html::to_text(html) {
+                converted if !converted.is_empty() => (BodySource::Html, converted),
+                _ => match paired.then(|| text_alternative(message, index)).flatten() {
+                    Some(text) => (BodySource::Text, text),
+                    None => continue,
+                },
             },
+            PartType::Text(text) => (BodySource::Text, plain(text)),
             _ => continue,
         };
         source.get_or_insert(from);
@@ -169,19 +189,15 @@ fn fill_body(file: &mut MailFile, message: &Message<'_>) {
     }
 }
 
-fn in_html(message: &Message<'_>, index: usize, text: &str) -> Option<String> {
-    if !has_line_break_tags(text) {
-        return None;
+fn text_alternative(message: &Message<'_>, index: usize) -> Option<String> {
+    match &message.text_part(u32::try_from(index).ok()?)?.body {
+        PartType::Text(text) => Some(plain(text)),
+        _ => None,
     }
-    let PartType::Html(html) = &message.html_part(u32::try_from(index).ok()?)?.body else {
-        return None;
-    };
-    Some(html::to_text(html)).filter(|converted| !converted.is_empty())
 }
 
-fn has_line_break_tags(text: &str) -> bool {
-    let text = text.to_ascii_lowercase();
-    LINE_BREAK_TAGS.iter().any(|tag| text.contains(tag))
+fn plain(text: &str) -> String {
+    text.replace("\r\n", "\n")
 }
 
 fn tidy(text: &str) -> String {
@@ -205,6 +221,7 @@ fn tidy(text: &str) -> String {
 }
 
 fn fill_attachments(file: &mut MailFile, message: &Message<'_>) {
+    let shown = shown_ids(message);
     file.attachments = message
         .attachments()
         .enumerate()
@@ -219,8 +236,38 @@ fn fill_attachments(file: &mut MailFile, message: &Message<'_>) {
                 })
                 .unwrap_or_else(|| "application/octet-stream".to_string()),
             size: part.contents().len() as u64,
+            inline: part
+                .content_id()
+                .map(|id| id.trim().trim_start_matches('<').trim_end_matches('>'))
+                .is_some_and(|id| !id.is_empty() && shown.contains(&id.to_ascii_lowercase())),
+        })
+        .filter(|attachment| {
+            !UNLISTED
+                .iter()
+                .any(|unlisted| attachment.content_type.eq_ignore_ascii_case(unlisted))
         })
         .collect();
+}
+
+fn shown_ids(message: &Message<'_>) -> BTreeSet<String> {
+    message
+        .html_bodies()
+        .filter_map(|part| match &part.body {
+            PartType::Html(html) => Some(html.to_ascii_lowercase()),
+            _ => None,
+        })
+        .flat_map(|html| {
+            html.match_indices(CID)
+                .filter_map(|(at, _)| {
+                    html[at + CID.len()..]
+                        .split(|c: char| c.is_whitespace() || "\"'()<>".contains(c))
+                        .next()
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 pub fn attachment_content(raw: &[u8], index: u32) -> Option<Vec<u8>> {
@@ -234,7 +281,7 @@ fn addrs(address: Option<&Address<'_>>) -> Vec<Addr> {
         .map(|a| {
             a.iter()
                 .map(|addr| Addr {
-                    name: addr.name().map(str::to_string),
+                    name: addr.name().map(one_line),
                     address: addr.address().map(str::to_string),
                 })
                 .collect()
@@ -346,20 +393,22 @@ mod tests {
     }
 
     #[test]
-    fn html_wins_over_a_text_part_with_line_break_tags() {
-        let raw = |text: &str| {
+    fn html_wins_over_its_text_part_unless_it_leaves_no_text() {
+        let raw = |html: &str| {
             format!(
                 "Subject: Both\r\nMIME-Version: 1.0\r\n\
                  Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n\
-                 --b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{text}\r\n\
-                 --b\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
-                 <p>Hello,</p><p>news.</p>\r\n--b--\r\n"
+                 --b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello,\r\n\r\nnews as text.\r\n\
+                 --b\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{html}\r\n--b--\r\n"
             )
         };
-        let file = convert(raw("Hello,<br />\r\n<BR>\r\nnews.").as_bytes(), meta());
+        let file = convert(raw("<p>Hello,</p><p>news.</p>").as_bytes(), meta());
         assert_eq!(file.body_source, BodySource::Html);
         assert_eq!(file.body, "Hello,\n\nnews.\n");
-        let file = convert(raw("Hello,\r\n\r\nnews as text.").as_bytes(), meta());
+        let file = convert(
+            raw("<img src=\"cid:all\"><div style=\"display:none\">x</div>").as_bytes(),
+            meta(),
+        );
         assert_eq!(file.body_source, BodySource::Text);
         assert_eq!(file.body, "Hello,\n\nnews as text.\n");
         let text_only = "Subject: Text\r\n\r\nA line break is <br />.\r\n";
@@ -369,13 +418,13 @@ mod tests {
     }
 
     #[test]
-    fn html_in_place_of_a_marked_up_text_part_keeps_the_rest() {
+    fn html_in_place_of_its_text_part_keeps_the_rest() {
         let raw = |html: &str| {
             format!(
                 "Subject: Mixed\r\nMIME-Version: 1.0\r\n\
                  Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
                  --m\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
-                 --a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello,<br />\r\n\
+                 --a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello as text,\r\n\
                  --a\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{html}\r\n--a--\r\n\
                  --m\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFooter of the list.\r\n\
                  --m--\r\n"
@@ -386,15 +435,15 @@ mod tests {
         assert_eq!(file.body, "Hello,\n\nFooter of the list.\n");
         let file = convert(raw("").as_bytes(), meta());
         assert_eq!(file.body_source, BodySource::Text);
-        assert_eq!(file.body, "Hello,<br />\n\nFooter of the list.\n");
+        assert_eq!(file.body, "Hello as text,\n\nFooter of the list.\n");
     }
 
     #[test]
     fn multipart_with_attachment() {
         let raw = include_bytes!("../tests/fixtures/multipart-attachment.eml");
         let file = convert(raw, meta());
-        assert_eq!(file.body_source, BodySource::Text);
-        assert_eq!(file.body.trim(), "Text version.");
+        assert_eq!(file.body_source, BodySource::Html);
+        assert_eq!(file.body.trim(), "HTML version.");
         assert_eq!(file.attachments.len(), 1);
         assert_eq!(file.attachments[0].index, 0);
         assert_eq!(file.attachments[0].name.as_deref(), Some("offer.pdf"));
@@ -406,6 +455,84 @@ mod tests {
         );
         assert_eq!(attachment_content(raw, 1), None);
         assert_eq!(file.subject, "Angebot für Projekt");
+    }
+
+    #[test]
+    fn control_characters_leave_subjects_and_names() {
+        let raw = "From: =?UTF-8?Q?Jane=09Doe?= <jane@example.com>\r\n\
+                   Subject: =?UTF-8?Q?Invoice_ready=0D=0A?=\r\n\r\nHi\r\n";
+        let file = convert(raw.as_bytes(), meta());
+        assert_eq!(file.subject, "Invoice ready");
+        assert_eq!(file.from[0].name.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn an_amp_part_is_no_attachment_and_indexes_stay() {
+        let raw = "Subject: Amp\r\nMIME-Version: 1.0\r\n\
+                   Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+                   --m\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
+                   --a\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nText\r\n\
+                   --a\r\nContent-Type: text/x-amp-html; charset=utf-8\r\n\r\n<html amp4email></html>\r\n\
+                   --a\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Hello</p>\r\n--a--\r\n\
+                   --m\r\nContent-Type: application/pdf; name=\"offer.pdf\"\r\n\
+                   Content-Disposition: attachment; filename=\"offer.pdf\"\r\n\r\n%PDF\r\n--m--\r\n";
+        let file = convert(raw.as_bytes(), meta());
+        assert_eq!(file.body, "Hello\n");
+        assert_eq!(file.attachments.len(), 1);
+        let offer = &file.attachments[0];
+        assert_eq!(offer.name.as_deref(), Some("offer.pdf"));
+        assert_eq!(
+            attachment_content(raw.as_bytes(), offer.index).as_deref(),
+            Some(&b"%PDF"[..])
+        );
+    }
+
+    #[test]
+    fn an_image_the_html_shows_is_inline() {
+        let raw = "Subject: Logo\r\nMIME-Version: 1.0\r\n\
+                   Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+                   --m\r\nContent-Type: multipart/related; boundary=\"r\"\r\n\r\n\
+                   --r\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
+                   <img src=\"CID:Logo@Example\" alt=\"Shop\"><p>Hello</p>\r\n\
+                   --r\r\nContent-Type: image/png\r\nContent-ID: <logo@example>\r\n\
+                   Content-Disposition: inline; filename=\"logo.png\"\r\n\r\npng\r\n--r--\r\n\
+                   --m\r\nContent-Type: image/png; name=\"photo.png\"\r\nContent-ID: <photo@example>\r\n\
+                   Content-Disposition: attachment; filename=\"photo.png\"\r\n\r\npng\r\n--m--\r\n";
+        let file = convert(raw.as_bytes(), meta());
+        let listed: Vec<_> = file
+            .attachments
+            .iter()
+            .map(|attachment| (attachment.name.as_deref(), attachment.inline))
+            .collect();
+        assert_eq!(
+            listed,
+            [(Some("logo.png"), true), (Some("photo.png"), false)]
+        );
+        let old: Attachment =
+            serde_json::from_str(r#"{"index":0,"name":null,"type":"image/png","size":3}"#).unwrap();
+        assert!(!old.inline);
+    }
+
+    #[test]
+    fn a_signature_part_is_no_attachment() {
+        let raw = "Subject: Signed\r\nMIME-Version: 1.0\r\n\
+                   Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; \
+                   boundary=\"s\"\r\n\r\n\
+                   --s\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+                   --m\r\nContent-Type: text/plain\r\n\r\nSigned.\r\n\
+                   --m\r\nContent-Type: application/pdf\r\n\
+                   Content-Disposition: attachment; filename=\"offer.pdf\"\r\n\r\n%PDF\r\n--m--\r\n\
+                   --s\r\nContent-Type: application/x-pkcs7-signature; name=\"smime.p7s\"\r\n\
+                   Content-Disposition: attachment; filename=\"smime.p7s\"\r\n\r\nsig\r\n--s--\r\n";
+        let file = convert(raw.as_bytes(), meta());
+        assert_eq!(file.body, "Signed.\n");
+        assert_eq!(file.attachments.len(), 1);
+        let offer = &file.attachments[0];
+        assert_eq!(offer.name.as_deref(), Some("offer.pdf"));
+        assert_eq!(
+            attachment_content(raw.as_bytes(), offer.index).as_deref(),
+            Some(&b"%PDF"[..])
+        );
     }
 
     #[test]

@@ -145,7 +145,7 @@ View {
         if (draftMail.account.length === 0)
             return
         page.openingDraft = false
-        const draft = Object.assign({}, draftMail.draft, { attachments: draftMail.attachments })
+        const draft = Object.assign({}, draftMail.draft, { attachments: draftMail.attachments.filter(item => !item.inline) })
         if (draft.parent.length > 0) {
             page.replyContinued(draft.parent, Object.assign(draft, { opened: draftMail.path }))
             return

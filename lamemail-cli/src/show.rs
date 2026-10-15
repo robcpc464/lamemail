@@ -487,12 +487,12 @@ mod tests {
         );
         assert_eq!(json["style"]["icon"], "incoming");
         assert_eq!(json["kind"], "inbox");
-        assert_eq!(json["body_source"], "text");
+        assert_eq!(json["body_source"], "html");
         assert_eq!(json["attachments"][0]["name"], "offer.pdf");
         assert_eq!(json["own"], false);
-        assert_eq!(json["text"], "Text version.");
+        assert_eq!(json["text"], "HTML version.");
         assert_eq!(json["parts"][0]["kind"], "text");
-        assert_eq!(json["parts"][0]["text"], "Text version.");
+        assert_eq!(json["parts"][0]["text"], "HTML version.");
         assert_eq!(json["answer_to"][0]["address"], "jane@example.com");
         assert!(json.get("format").is_none());
     }
@@ -512,7 +512,7 @@ mod tests {
             json["quote"]
                 .as_str()
                 .unwrap()
-                .ends_with("\n> Text version.\n")
+                .ends_with("\n> HTML version.\n")
         );
         assert_eq!(json["answer_to"][0]["address"], "jane@example.com");
         let stranger = Identities::of(None, []);
@@ -606,7 +606,7 @@ mod tests {
         assert!(text.starts_with(&format!("{}:", t().show_from)), "{text}");
         assert!(text.contains("Angebot für Projekt"), "{text}");
         assert!(text.contains("offer.pdf (application/pdf, "), "{text}");
-        assert!(text.contains("\n\nText version.\n"), "{text}");
+        assert!(text.contains("\n\nHTML version.\n"), "{text}");
         assert!(text.contains("2025-09-15 "), "{text}");
     }
 

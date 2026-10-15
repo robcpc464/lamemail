@@ -16,6 +16,10 @@ View {
     property bool seen: true
     property bool noting: false
     property bool stale: false
+    property string inlineShownFor
+    readonly property var ownAttachments: mail.attachments.filter(item => !item.inline)
+    readonly property var inlineAttachments: mail.attachments.filter(item => item.inline)
+    readonly property bool inlineShown: page.inlineShownFor === mail.path
     readonly property bool all: mail.answerCc.length > 0 && mail.answerCc.every(person => composer.has(person.address))
     signal closeRequested()
     signal composeRequested()
@@ -84,7 +88,7 @@ View {
         const inDraft = (item) => own.some(other => other.path === undefined && other.source === undefined
                                                     && other.name === item.name && other.type === item.type
                                                     && other.size === item.size)
-        const forwarded = mail.attachments.filter(item => !inDraft(item)).map(item => Object.assign({ source: mail.path }, item))
+        const forwarded = page.ownAttachments.filter(item => !inDraft(item)).map(item => Object.assign({ source: mail.path }, item))
         composer.attachments = page.forwarding ? forwarded.concat(own) : own
         if (page.forwarding) {
             page.replyPeople = composer.people
@@ -325,8 +329,8 @@ View {
                     spacing: 8
                     visible: mail.attachments.length > 0
 
-                    Repeater {
-                        model: mail.attachments
+                    Component {
+                        id: fileChip
 
                         AttachmentChip {
                             required property var modelData
@@ -337,11 +341,30 @@ View {
                         }
                     }
 
+                    Repeater {
+                        model: page.ownAttachments
+                        delegate: fileChip
+                    }
+
                     AttachmentChip {
+                        visible: page.ownAttachments.length > 0
                         icon: "download"
                         tip: Strings.downloadAll
                         busy: mail.downloading
                         onClicked: mail.downloadAttachments(Preferences.downloads())
+                    }
+
+                    AttachmentChip {
+                        visible: page.inlineAttachments.length > 0
+                        icon: "image"
+                        name: Strings.inlineImages.replace("{}", page.inlineAttachments.length)
+                        tip: page.inlineShown ? Strings.hideInline : Strings.showInline
+                        onClicked: page.inlineShownFor = page.inlineShown ? "" : mail.path
+                    }
+
+                    Repeater {
+                        model: page.inlineShown ? page.inlineAttachments : []
+                        delegate: fileChip
                     }
                 }
 

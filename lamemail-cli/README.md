@@ -10,7 +10,7 @@ The `lamemail` binary: one-way sync, server → disk, and replies out.
 
 - every message of the folders an account synchronizes (see "The folders
   of an account")
-- text only: HTML-only mails are converted to text and the HTML is dropped;
+- text only: HTML is converted to text and dropped;
   attachments are listed with name, type and size but never stored in the
   folder; `attachment` fetches one on demand into the runtime folder
 - an exact mirror: what disappears on the server disappears on disk
@@ -157,7 +157,8 @@ file is read, because of the copies (below):
   drafts, junk, trash, archive, the newest of equals: the archive last,
   where a mail lies when it lies nowhere else (Gmail's `All Mail`, whose
   stale copy of a mail just deleted must not win until the next sync)
-- `attachments` is the count; `preview` is the body with whitespace collapsed,
+- `attachments` is the count of the attachments that are not `inline`;
+  `preview` is the body with whitespace collapsed,
   at most 160 characters
 - `forwarded` is true when the message has the `$Forwarded` keyword
 - files that cannot be read are reported on stderr and skipped
@@ -304,7 +305,7 @@ the derived fields `own`, `forwarded` (as in `list`), `text`, `parts`,
 `forward_subject`, `quote` and `parent`, and the account's `signature`:
 
 ```json
-{"account":"private","color":"blue","folder":"inbox","style":{"icon":"incoming","dense":false,"dim":false,"strike":false,"italic":false,"indent":0,"color":"blue"},"kind":"inbox","uid":4711,"path":"private/inbox/2026-09-15_1432-offer-for-project-4711.json","own":false,"received":"2026-09-15T14:32:05+02:00","date":"2026-09-15T14:32:00+02:00","message_id":"a1b2c3@example.com","in_reply_to":null,"references":[],"from":[{"name":"Jane Doe","address":"jane@example.com"}],"reply_to":[],"to":[{"name":null,"address":"me@example.com"}],"cc":[],"bcc":[],"subject":"Offer for project","flags":{"seen":true,"answered":false,"flagged":false,"draft":false,"keywords":[]},"size":234567,"body":"Hi,\n\nplease find the offer attached.\n\nJane\n","body_source":"text","text":"Hi,\n\nplease find the offer attached.\n\nJane","attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394}]}
+{"account":"private","color":"blue","folder":"inbox","style":{"icon":"incoming","dense":false,"dim":false,"strike":false,"italic":false,"indent":0,"color":"blue"},"kind":"inbox","uid":4711,"path":"private/inbox/2026-09-15_1432-offer-for-project-4711.json","own":false,"received":"2026-09-15T14:32:05+02:00","date":"2026-09-15T14:32:00+02:00","message_id":"a1b2c3@example.com","in_reply_to":null,"references":[],"from":[{"name":"Jane Doe","address":"jane@example.com"}],"reply_to":[],"to":[{"name":null,"address":"me@example.com"}],"cc":[],"bcc":[],"subject":"Offer for project","flags":{"seen":true,"answered":false,"flagged":false,"draft":false,"keywords":[]},"size":234567,"body":"Hi,\n\nplease find the offer attached.\n\nJane\n","body_source":"text","text":"Hi,\n\nplease find the offer attached.\n\nJane","attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394,"inline":false}]}
 ```
 
 - `own` is true for mail the user wrote: from a folder of the kind `sent`
@@ -386,8 +387,9 @@ or null). The account's folder is read completely for every call, about
 
 `lamemail attachment <path> <index>` fetches one attachment of a message
 from the server and prints the path of its file; `index` is the
-attachment's `index` in `show --json`. Without `index` it fetches all of
-them and prints one path per line. The message is fetched whole and once,
+attachment's `index` in `show --json`, `inline` ones too. Without `index`
+it fetches all that are not `inline` and prints one path per line. The
+message is fetched whole and once,
 with `EXAMINE` and `BODY.PEEK[]` like the sync, once the folder's
 `UIDVALIDITY` is the one of `.folder.json`. A file goes to
 `$XDG_RUNTIME_DIR/lamemail/attachments/<message path without .json>/<index>/<name>`,
@@ -412,7 +414,7 @@ With `--json` it prints one object per file, the attachment as `show
 --json` lists it and its `path`:
 
 ```json
-{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394,"path":"/run/user/1000/lamemail/attachments/private/inbox/2026-09-15_1432-offer-for-project-4711/0/offer.pdf"}
+{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394,"inline":false,"path":"/run/user/1000/lamemail/attachments/private/inbox/2026-09-15_1432-offer-for-project-4711/0/offer.pdf"}
 ```
 
 A message without that attachment, a message no longer on the server, a
@@ -555,7 +557,7 @@ With `--attachment` the entry has `originals` as well, one per message,
 with `--file` it has `files`:
 
 ```json
-"originals":[{"folder":"INBOX","uidvalidity":1694771234,"uid":4711,"attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394}]}]
+"originals":[{"folder":"INBOX","uidvalidity":1694771234,"uid":4711,"attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394,"inline":false}]}]
 "files":[{"path":"/home/me/plan.pdf","name":"plan.pdf","type":"application/pdf","size":48211}]
 ```
 
@@ -1244,7 +1246,7 @@ secret-tool clear application lamemail account private
   "subject": "Offer for project",
   "body": "Hi,\n\nplease find the offer attached.\n\nJane\n",
   "body_source": "text",
-  "attachments": [{ "index": 0, "name": "offer.pdf", "type": "application/pdf", "size": 120394 }]
+  "attachments": [{ "index": 0, "name": "offer.pdf", "type": "application/pdf", "size": 120394, "inline": false }]
 }
 ```
 
@@ -1253,16 +1255,18 @@ secret-tool clear application lamemail account private
 - `received` is `INTERNALDATE`; `date` is the `Date` header with its own
   offset, or `null` when missing or unparseable
 - `message_id`, `in_reply_to` and `references` are stored without angle brackets
+- `subject` and the names in `from`, `to` and the rest are one line: a
+  control character (a line break or tab, even one in an encoded word)
+  becomes a space, the ends are trimmed
 - `body` is the text part(s) joined with one blank line, line endings
   normalised to `\n`, tidied: a line of nothing but spaces and invisible
   characters (zero-width spaces and joiners, direction marks, fillers such
   as U+034F or U+3164) counts as blank, several blank lines become one and
   none lead or trail; `body_source` says where it came from: `text`,
-  `html` (converted, HTML discarded) or `none`. A text part wins over
-  its HTML alternative, unless it holds line-break tags (`<br>`, `<br/>`,
-  `<br />`): then the sender filled it with markup and the HTML is
-  converted in its place, as long as that leaves any text
-- an HTML-only mail is converted by fixed rules, without CSS: paragraphs
+  `html` (converted, HTML discarded) or `none`. An HTML part wins over
+  its text alternative, which is taken as it is only where the HTML
+  leaves no text; a mail of text parts alone keeps them as they are
+- HTML is converted by fixed rules, without CSS: paragraphs
   and headings are separated by one blank line, `div`s and table rows are
   lines and the cells of a row are joined by ` · `, lists become `- ` and
   `1. ` items indented by two spaces per level, `<pre>` keeps its spaces,
@@ -1270,29 +1274,67 @@ secret-tool clear application lamemail account private
   as the address alone when that is its text (`mailto:` without the
   scheme), a linked image by its alt text, an unlinked one as `[alt]`;
   scripts, styles, hidden elements (`display:none`, `visibility:hidden`,
-  `opacity:0`, `max-height:0` with `overflow:hidden`, `hidden`), images
+  `opacity:0`, a `max-height` or `max-width` of at most 1px with
+  `overflow:hidden`, `hidden`), images
   without alt text, tracking pixels and invisible filler characters are
-  dropped
+  dropped; the end tag `</br>` is a line break, as in a browser, and
+  whitespace and `|` inside a link's address are written as `%20`
+  and `%7C`
+- a link's address follows the last line of its own text, also when the
+  link wraps blocks (buttons, cards); trailing spaces of its text are
+  dropped, and a `mailto:` link whose text holds the address writes it
+  once. A link whose text comes only from links inside it writes no
+  address, and an `<a>` opened while another is open closes that one
+  (outside a table cell), as in a browser. A link of images alone takes
+  the `aria-label` or `title` of the link, else the `title` of an image,
+  as its text; an image with an empty `alt` is decoration, so a link of
+  such images alone writes nothing, and one without any `alt` keeps its
+  bare address. An image link beside a text link with the same address
+  or the same text is left out, and two text links with the same address
+  side by side share one address. After an address, any visible
+  character but closing punctuation is set off by a space
 - what a mail program marks without a `<blockquote>` or a `-- ` line is
   found by its markup, never by words: the original below an Outlook
-  reply (the header block Word draws a line above, `divRplyFwdMsg`)
+  reply (the header block Word draws a line above, `divRplyFwdMsg`, the
+  new Outlook's `mail-editor-reference-message-container`)
   becomes `>` lines up to the end of the mail or of the quote around it,
   a signature block (`gmail_signature`, `moz-signature`,
   `protonmail_signature_block`, the ids `Signature`, `AppleMailSignature`
-  and `ms-outlook-mobile-signature`) gets its `--` line, a `<blockquote>`
+  and `ms-outlook-mobile-signature`, in any case, so Templafy's
+  `signature` too) gets its `--` line, a `<blockquote>`
   that only indents (`border:none`) is a paragraph, and Word's list
   paragraphs become `- ` and `1. ` items by their level
 - struck text (`<s>`, `<del>`, `line-through`) stands between `~~`, digits
   and signs alone in `<sup>` and `<sub>` become their raised and lowered
-  characters (`m²`, `10⁻⁶`, `H₂O`); in a table with header cells an empty
-  cell keeps its place (`Scarf · · 12 €`); an empty block of a set
+  characters (`m²`, `10⁻⁶`, `H₂O`); an empty block of a set
   height (`height` beside a `line-height`, the spacer of MJML and of
   table layouts) is a blank line
+- a data table becomes a pipe table, a paragraph of its own: a table
+  without a table inside, whose first row holds only header cells
+  (`<th>`), at least two, one of them with text, and with text and a
+  `<td>` in a later row. Each row is one line, `| Scarf | | 12 € |`, the
+  first row followed by `|---|---|---|`, an empty cell keeps its place,
+  a cell with `colspan` takes that many columns (16 at most), the blocks
+  and line breaks inside a cell become spaces and a `|` in a cell `\|`.
+  Every other table is layout, its rows lines as above. A layout row of
+  at least two cells with text, each of them one line (no break or
+  block between two pieces of its text, a nested table only of one
+  cell), stays one line: the blocks inside its cells, nested one-cell
+  tables included, break softly, so `<td><p>Subtotal</p></td>
+  <td><p>€81,00</p></td>` reads `Subtotal · €81,00`. In other rows a
+  cell after one that wrote several lines starts a line of its own
+  instead of being joined to that cell's last line
 - quotes and lists together nest 32 levels deep, deeper ones stay at that
   level, and at most 512 elements are open at once: a mail cannot make
   the text grow beyond its own size many times over
 - `attachments` are metadata only; `index` counts attachments in message
-  order, `size` is the decoded size
+  order, `size` is the decoded size; the AMP part of a mail
+  (`text/x-amp-html`) and the signature of a signed mail
+  (`application/pkcs7-signature`, `application/x-pkcs7-signature`,
+  `application/pgp-signature`) are not listed, but still counted by
+  `index`; `inline` is true for a part whose `Content-ID` the mail's HTML
+  shows as `cid:` (logos, icons, pictures in the text), false otherwise
+  and in files written before it existed
 
 ### Sync algorithm
 

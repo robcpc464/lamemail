@@ -77,7 +77,7 @@ const LINK_SCHEMES: &[&str] = &["http://", "https://", "mailto:"];
 const MAILTO: &str = "mailto:";
 const WWW: &str = "www.";
 const OUTLOOK_LINES: &[&str] = &["MsoNormal", "MsoListParagraph"];
-const OUTLOOK_QUOTE: &str = "divRplyFwdMsg";
+const OUTLOOK_QUOTES: &[&str] = &["divRplyFwdMsg", "mail-editor-reference-message-container"];
 const OUTLOOK_PREFIX: &str = "x_";
 const WORD_MARKER: &str = "[if !supportLists]";
 const WORD_MARKER_END: &str = "[endif]";
@@ -85,11 +85,22 @@ const WORD_LEVEL: &str = "level";
 const IMPORTANT: &str = "!important";
 const NO_BREAK_SPACE: char = '\u{a0}';
 const CELL_SEPARATOR: &str = " · ";
+const ROW_TAG: &[u8] = b"<tr";
+const ROW_START: &str = "| ";
+const CELL_END: &str = " |";
+const RULE_CELL: &str = "|---";
+const PIPE: char = '|';
+const ESCAPE: char = '\\';
 const QUOTE_PREFIX: &str = "> ";
 const STRIKE: &str = "~~";
 const BULLET: &str = "-";
 const LIST_INDENT: usize = 2;
 const MAX_OPEN: usize = 512;
+const MAX_SPAN: usize = 16;
+const CLOSING: &[char] = &[
+    '.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '"', '\'', '»', '”', '’', '…',
+];
+const COLLAPSED: &[&str] = &["max-height", "max-width"];
 
 pub fn is_invisible(c: char) -> bool {
     matches!(
@@ -114,10 +125,16 @@ pub fn is_invisible(c: char) -> bool {
 }
 
 pub fn to_text(html: &str) -> String {
-    let mut emitter = DefaultEmitter::default();
-    emitter.naively_switch_states(true);
-    let mut converter = Converter::default();
-    for Ok(token) in Tokenizer::new_with_emitter(html, emitter) {
+    let Layout {
+        data_tables,
+        flat_rows,
+    } = layout(html);
+    let mut converter = Converter {
+        data_tables: data_tables.into_iter(),
+        flat_rows: flat_rows.into_iter(),
+        ..Converter::default()
+    };
+    for token in tokens(html) {
         match token {
             Token::StartTag(tag) => converter.start(&tag),
             Token::EndTag(tag) => converter.end(&String::from_utf8_lossy(&tag.name)),
@@ -127,6 +144,220 @@ pub fn to_text(html: &str) -> String {
         }
     }
     converter.finish()
+}
+
+fn tokens(html: &str) -> impl Iterator<Item = Token> + '_ {
+    let mut emitter = DefaultEmitter::default();
+    emitter.naively_switch_states(true);
+    Tokenizer::new_with_emitter(html, emitter).flatten()
+}
+
+#[derive(Default)]
+struct Scanned {
+    nested: bool,
+    rows: usize,
+    header: bool,
+    columns: usize,
+    named: bool,
+    filled: bool,
+    data_cell: bool,
+}
+
+impl Scanned {
+    fn is_data(&self) -> bool {
+        !self.nested
+            && self.header
+            && self.columns > 1
+            && self.named
+            && self.filled
+            && self.data_cell
+    }
+}
+
+#[derive(Default)]
+struct ScannedRow {
+    texted: usize,
+    spread: bool,
+}
+
+struct OpenTable {
+    table: usize,
+    row: Option<usize>,
+    cell: Option<(usize, usize)>,
+}
+
+#[derive(Default)]
+struct Layout {
+    data_tables: Vec<bool>,
+    flat_rows: Vec<bool>,
+}
+
+#[derive(Default)]
+struct Scan {
+    tables: Vec<Scanned>,
+    rows: Vec<ScannedRow>,
+    open: Vec<OpenTable>,
+    texts: usize,
+    separated: usize,
+    pending: bool,
+    invisible: usize,
+    links: usize,
+}
+
+impl Scan {
+    fn start(&mut self, tag: &StartTag<()>) {
+        let name = String::from_utf8_lossy(&tag.name);
+        let name = name.as_ref();
+        if INVISIBLE.contains(&name) {
+            self.invisible += 1;
+        }
+        if is_boundary(name) {
+            self.boundary();
+        }
+        match name {
+            "table" => {
+                if let Some(outer) = self.open.last() {
+                    self.tables[outer.table].nested = true;
+                }
+                self.open.push(OpenTable {
+                    table: self.tables.len(),
+                    row: None,
+                    cell: None,
+                });
+                self.tables.push(Scanned::default());
+            }
+            "tr" => {
+                self.end_cell();
+                let row = self.rows.len();
+                self.rows.push(ScannedRow::default());
+                if let Some(open) = self.open.last_mut() {
+                    open.row = Some(row);
+                    let table = &mut self.tables[open.table];
+                    table.rows += 1;
+                    table.header |= table.rows == 1;
+                }
+            }
+            "td" | "th" => {
+                self.end_cell();
+                let mark = (self.texts, self.separated);
+                if let Some(open) = self.open.last_mut() {
+                    open.cell = Some(mark);
+                    let table = &mut self.tables[open.table];
+                    if table.rows == 1 {
+                        table.columns += 1;
+                        table.header &= name == "th";
+                    } else {
+                        table.data_cell |= name == "td";
+                    }
+                }
+            }
+            "a" => self.links += 1,
+            "img" => match attribute(tag, "alt") {
+                Some(alt) if !is_blank(&alt) => self.text(),
+                None if self.links > 0 => self.text(),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn end(&mut self, name: &str) {
+        if INVISIBLE.contains(&name) {
+            self.invisible = self.invisible.saturating_sub(1);
+        }
+        if is_boundary(name) {
+            self.boundary();
+        }
+        match name {
+            "td" | "th" | "tr" => self.end_cell(),
+            "table" => {
+                self.end_cell();
+                self.open.pop();
+            }
+            "a" => self.links = self.links.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    fn string(&mut self, text: &str) {
+        if self.invisible > 0 || is_blank(text) {
+            return;
+        }
+        self.text();
+        if let Some(open) = self.open.last()
+            && open.row.is_some()
+        {
+            let table = &mut self.tables[open.table];
+            if table.rows == 1 {
+                table.named = true;
+            } else {
+                table.filled = true;
+            }
+        }
+    }
+
+    fn text(&mut self) {
+        if std::mem::take(&mut self.pending) {
+            self.separated += 1;
+        }
+        self.texts += 1;
+    }
+
+    fn boundary(&mut self) {
+        self.pending = self.texts > 0;
+    }
+
+    fn end_cell(&mut self) {
+        let Some(open) = self.open.last_mut() else {
+            return;
+        };
+        if let Some((texts, separated)) = open.cell.take()
+            && let Some(row) = open.row
+            && self.texts > texts
+        {
+            let row = &mut self.rows[row];
+            row.texted += 1;
+            row.spread |= self.separated - separated > usize::from(texts > 0);
+        }
+    }
+}
+
+fn layout(html: &str) -> Layout {
+    if !html
+        .as_bytes()
+        .windows(ROW_TAG.len())
+        .any(|start| start.eq_ignore_ascii_case(ROW_TAG))
+    {
+        return Layout::default();
+    }
+    let mut scan = Scan::default();
+    for token in tokens(html) {
+        match token {
+            Token::StartTag(tag) => scan.start(&tag),
+            Token::EndTag(tag) => scan.end(&String::from_utf8_lossy(&tag.name)),
+            Token::String(text) => scan.string(&String::from_utf8_lossy(&text)),
+            _ => {}
+        }
+    }
+    Layout {
+        data_tables: scan.tables.iter().map(Scanned::is_data).collect(),
+        flat_rows: scan
+            .rows
+            .iter()
+            .map(|row| row.texted > 1 && !row.spread)
+            .collect(),
+    }
+}
+
+fn is_boundary(name: &str) -> bool {
+    name == "br"
+        || [PARAGRAPHS, LINES, LISTS, TABLE_PARTS]
+            .iter()
+            .any(|names| names.contains(&name))
+}
+
+fn is_blank(text: &str) -> bool {
+    text.chars().all(|c| c.is_whitespace() || is_invisible(c))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -143,6 +374,15 @@ enum Gap {
     Space,
     Cell,
     Cells(usize),
+}
+
+impl Gap {
+    fn cells(self) -> usize {
+        match self {
+            Gap::Cells(cells) => cells,
+            _ => 0,
+        }
+    }
 }
 
 enum Role {
@@ -184,14 +424,39 @@ enum List {
 #[derive(Default)]
 struct Table {
     data: bool,
+    flat: bool,
+    in_flat: bool,
     cells: usize,
-    row: usize,
+    cell_line: usize,
+    spanned: usize,
+    ruled: bool,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Source {
+    #[default]
+    Text,
+    Alt,
+    Address,
 }
 
 struct Link {
     href: String,
+    name: Option<String>,
     label: Option<(usize, usize)>,
+    last_line: Option<usize>,
+    written: Option<usize>,
+    real: bool,
     image: bool,
+}
+
+struct Written {
+    href: String,
+    text: String,
+    image_only: bool,
+    line: usize,
+    start: usize,
+    end: usize,
 }
 
 struct Style(Vec<(String, String)>);
@@ -242,6 +507,7 @@ struct Converter {
     prefix_len: usize,
     open: bool,
     visible: bool,
+    piped: bool,
     gap: Gap,
     blank: bool,
     last_blank: bool,
@@ -264,14 +530,25 @@ struct Converter {
     word_marker: Option<String>,
     word_level: usize,
     lists: Vec<List>,
+    data_tables: std::vec::IntoIter<bool>,
+    data_table: bool,
+    flat_rows: std::vec::IntoIter<bool>,
+    flat_row: bool,
     tables: Vec<Table>,
     links: Vec<Link>,
+    source: Source,
+    previous: Option<Written>,
     stack: Vec<Open>,
 }
 
 impl Converter {
     fn start(&mut self, tag: &StartTag<()>) {
         let name = String::from_utf8_lossy(&tag.name).into_owned();
+        match name.as_str() {
+            "table" => self.data_table = self.data_tables.next().unwrap_or_default(),
+            "tr" => self.flat_row = self.flat_rows.next().unwrap_or_default(),
+            _ => {}
+        }
         self.close_implied(&name);
         let void = VOID.contains(&name.as_str());
         if self.hidden > 0 {
@@ -322,6 +599,12 @@ impl Converter {
     }
 
     fn end(&mut self, name: &str) {
+        if name == "br" {
+            if self.hidden == 0 {
+                self.hard_break();
+            }
+            return;
+        }
         let scope = if TABLE_PARTS.contains(&name) {
             TABLE_SCOPE
         } else {
@@ -350,6 +633,7 @@ impl Converter {
             "dd" | "dt" => self.close(&["dd", "dt"], DEFINITION_SCOPE),
             "td" | "th" => self.close(&["td", "th"], ROW_SCOPE),
             "tr" => self.close(&["tr"], TABLE_SCOPE),
+            "a" if self.hidden == 0 => self.close(&["a"], SCOPE),
             _ => {}
         }
         if [PARAGRAPHS, LINES, LISTS]
@@ -375,6 +659,9 @@ impl Converter {
     }
 
     fn block_of(&self, name: &str, tag: &StartTag<()>) -> Option<Block> {
+        if name == "table" && self.data_table {
+            return Some(Block::Paragraph);
+        }
         if LISTS.contains(&name) {
             return Some(self.list_block());
         }
@@ -419,7 +706,7 @@ impl Converter {
         block: Option<Block>,
     ) -> Role {
         if let Some(block) = block {
-            self.block(block);
+            self.block_in(name, block);
         }
         if let Some(level) = style.word_level() {
             self.word_level = level;
@@ -429,7 +716,13 @@ impl Converter {
                 if let Some(href) = link_target(tag) {
                     self.links.push(Link {
                         href,
+                        name: attribute(tag, "aria-label")
+                            .and_then(|name| name_of(&name))
+                            .or_else(|| attribute(tag, "title").and_then(|title| name_of(&title))),
                         label: None,
+                        last_line: None,
+                        written: None,
+                        real: false,
                         image: false,
                     });
                     return Role::Link;
@@ -446,14 +739,22 @@ impl Converter {
             "ol" => self.lists.push(List::Numbers(list_start(tag))),
             "ul" | "menu" => self.lists.push(List::Bullets),
             "li" => self.bullet = Some(self.next_bullet()),
-            "table" => self.tables.push(Table::default()),
+            "table" => {
+                let in_flat = self.in_flat_cell();
+                self.tables.push(Table {
+                    data: self.data_table,
+                    in_flat,
+                    ..Table::default()
+                });
+            }
             "tr" => {
                 if let Some(table) = self.tables.last_mut() {
+                    table.flat = self.flat_row && !table.data;
                     table.cells = 0;
-                    table.row = self.finished_lines;
+                    table.spanned = 0;
                 }
             }
-            "td" | "th" => self.cell(name == "th"),
+            "td" | "th" => self.cell(column_span(tag)),
             _ => {}
         }
         Role::Shown
@@ -473,7 +774,7 @@ impl Converter {
             }
             Role::Shown => {
                 if let Some(block) = open.block {
-                    self.block(block);
+                    self.block_in(&open.name, block);
                 }
                 match open.name.as_str() {
                     "blockquote" => self.quote = open.quote,
@@ -485,6 +786,12 @@ impl Converter {
                     }
                     "table" => {
                         self.tables.pop();
+                    }
+                    "tr" => {
+                        if let Some(table) = self.tables.last_mut() {
+                            table.ruled = true;
+                            table.flat = false;
+                        }
                     }
                     "li" => self.bullet = None,
                     _ => {}
@@ -501,7 +808,11 @@ impl Converter {
             self.signatures -= 1;
             self.signing &= self.signatures > 0;
         }
-        if open.spacer == Some(self.written) && !self.visible {
+        if open.spacer == Some(self.written)
+            && !self.visible
+            && !self.in_data_cell()
+            && !self.in_flat_cell()
+        {
             self.blank = true;
         }
     }
@@ -512,7 +823,7 @@ impl Converter {
             "img" => self.image(tag, style),
             _ => {
                 if let Some(block) = self.block_of(name, tag) {
-                    self.block(block);
+                    self.block_in(name, block);
                 }
             }
         }
@@ -522,48 +833,69 @@ impl Converter {
         if is_pixel(tag, style) {
             return;
         }
-        let alt = attribute(tag, "alt").unwrap_or_default();
-        let alt = alt.trim();
+        let alt = attribute(tag, "alt");
         if let Some(link) = self.links.last_mut() {
-            link.image = true;
+            link.image |= alt.is_none();
+            if link.name.is_none() {
+                link.name = attribute(tag, "title").and_then(|title| name_of(&title));
+            }
         }
+        let alt = alt.unwrap_or_default();
+        let alt = alt.trim();
         if self.links.is_empty() && alt.chars().any(char::is_alphanumeric) {
-            self.text(&format!(" [{alt}] "));
+            self.write(&format!(" [{alt}] "), Source::Alt);
         } else {
-            self.text(&format!(" {alt} "));
+            self.write(&format!(" {alt} "), Source::Alt);
         }
     }
 
-    fn cell(&mut self, header: bool) {
-        let kept = self.tables.last_mut().is_some_and(|table| {
-            table.data |= header;
-            table.cells += 1;
-            table.data && table.cells > 1
-        });
-        if kept {
-            self.gap = match self.gap {
-                Gap::Cells(cells) => Gap::Cells(cells + 1),
-                _ => Gap::Cells(1),
-            };
-        } else if self.open {
-            self.gap = Gap::Cell;
-        }
-    }
-
-    fn kept_cells(&mut self, cells: usize) {
-        if self.visible {
-            self.line.push_str(&CELL_SEPARATOR.trim_end().repeat(cells));
-            self.line.push(' ');
+    fn cell(&mut self, span: usize) {
+        let Some(table) = self.tables.last_mut() else {
+            if self.open {
+                self.gap = Gap::Cell;
+            }
             return;
+        };
+        let first = table.cells == 0;
+        table.cells += span;
+        let spanned = std::mem::replace(&mut table.spanned, span - 1);
+        let spread = !first && table.cell_line < self.finished_lines;
+        if table.data {
+            if !first {
+                self.gap = Gap::Cells(self.gap.cells() + spanned + 1);
+            }
+        } else if self.open {
+            if spread {
+                self.block(Block::Line);
+            } else {
+                self.gap = Gap::Cell;
+            }
         }
-        self.line.truncate(self.prefix_len);
-        if self
-            .tables
+        let lines = self.finished_lines;
+        if let Some(table) = self.tables.last_mut() {
+            table.cell_line = lines;
+        }
+    }
+
+    fn in_data_cell(&self) -> bool {
+        self.tables
             .last()
-            .is_some_and(|table| table.row == self.finished_lines)
-        {
-            self.line
-                .push_str(&CELL_SEPARATOR.trim_start().repeat(cells));
+            .is_some_and(|table| table.data && table.cells > 0)
+    }
+
+    fn in_flat_cell(&self) -> bool {
+        self.tables
+            .last()
+            .is_some_and(|table| table.in_flat || table.flat && table.cells > 0)
+    }
+
+    fn empty_cells(&mut self, cells: usize) {
+        if self.visible {
+            self.line.push_str(&CELL_END.repeat(cells));
+            self.line.push(' ');
+        } else {
+            self.line.truncate(self.prefix_len);
+            self.line.push_str(&ROW_START.repeat(cells));
         }
     }
 
@@ -608,16 +940,141 @@ impl Converter {
 
     fn link_end(&mut self, link: Link) {
         let target = display(&link.href);
-        match link.label {
-            None if link.image => self.address(&format!(" {target}")),
-            None => {}
-            Some((line, start)) if line == self.finished_lines && self.shows(start, &target) => {
-                self.line.truncate(start);
-                self.line.push_str(&target);
-                self.gap = self.gap.max(Gap::Word);
+        match link.last_line {
+            Some(line) if line < self.finished_lines => {
+                if let Some(at) = link.written {
+                    self.insert(at, &format!(" <{target}>"));
+                }
             }
-            Some(_) => self.address(&format!(" <{target}>")),
+            Some(_) => self.close_link(link, &target),
+            None if link.label.is_some() => {}
+            None => self.name_link(link, &target),
         }
+    }
+
+    fn close_link(&mut self, link: Link, target: &str) {
+        let trimmed = self.line.trim_end().len().max(self.prefix_len);
+        self.line.truncate(trimmed);
+        let start = match link.label {
+            Some((line, start))
+                if line == self.finished_lines && self.line.is_char_boundary(start) =>
+            {
+                start
+            }
+            _ => self.prefix_len,
+        };
+        let text = self.line[start..].trim().to_string();
+        let Some(start) = self.beside_previous(&link.href, &text, !link.real, start, target) else {
+            self.gap = self.gap.max(Gap::Word);
+            return;
+        };
+        if self.shows(start, target) {
+            self.line.truncate(start);
+            self.line.push_str(target);
+            self.gap = self.gap.max(Gap::Word);
+        } else if has_prefix(&link.href, MAILTO) && self.holds(start, target) {
+            self.gap = self.gap.max(Gap::Word);
+        } else {
+            self.address(&format!(" <{target}>"));
+        }
+        self.previous = Some(Written {
+            href: link.href,
+            text,
+            image_only: !link.real,
+            line: self.finished_lines,
+            start,
+            end: self.line.len(),
+        });
+    }
+
+    fn name_link(&mut self, link: Link, target: &str) {
+        let (text, shown) = match link.name {
+            Some(name) => (name.clone(), format!("{name} <{target}>")),
+            None if link.image => (String::new(), target.to_string()),
+            None => return,
+        };
+        if self.previous.as_ref().is_some_and(|previous| {
+            !previous.image_only
+                && self.repeats(previous, &link.href, &text, true)
+                && self.follows(previous, self.line.len())
+        }) {
+            return;
+        }
+        self.address(&format!(" {shown}"));
+        self.previous = self.line.ends_with(&shown).then(|| Written {
+            href: link.href,
+            text,
+            image_only: true,
+            line: self.finished_lines,
+            start: self.line.len() - shown.len(),
+            end: self.line.len(),
+        });
+    }
+
+    fn repeats(&self, previous: &Written, href: &str, text: &str, image_only: bool) -> bool {
+        previous.href == href
+            || previous.image_only != image_only && !text.is_empty() && previous.text == text
+    }
+
+    fn beside_previous(
+        &mut self,
+        href: &str,
+        text: &str,
+        image_only: bool,
+        start: usize,
+        target: &str,
+    ) -> Option<usize> {
+        let Some(previous) = self.previous.take().filter(|previous| {
+            self.repeats(previous, href, text, image_only)
+                && self.follows(previous, start)
+                && self.line.is_char_boundary(previous.start)
+        }) else {
+            return Some(start);
+        };
+        let address = format!(" <{target}>");
+        match (previous.image_only, image_only) {
+            (true, false) => self.cut(previous.start..start),
+            (false, true) => {
+                self.line.truncate(previous.end);
+                self.previous = Some(previous);
+                return None;
+            }
+            (false, false)
+                if previous.href == href
+                    && self.line[previous.end..start].trim().is_empty()
+                    && self.line[previous.start..previous.end].ends_with(&address) =>
+            {
+                self.cut(previous.end - address.len()..previous.end);
+            }
+            _ => return Some(start),
+        }
+        Some(previous.start)
+    }
+
+    fn cut(&mut self, range: std::ops::Range<usize>) {
+        let (start, end) = (range.start, range.end);
+        self.line.replace_range(range, "");
+        for link in &mut self.links {
+            if let Some((line, label)) = &mut link.label
+                && *line == self.finished_lines
+                && *label > start
+            {
+                *label = if *label >= end {
+                    *label - (end - start)
+                } else {
+                    start
+                };
+            }
+        }
+    }
+
+    fn follows(&self, previous: &Written, start: usize) -> bool {
+        previous.line == self.finished_lines
+            && self.line.get(previous.end..start).is_some_and(|between| {
+                between
+                    .chars()
+                    .all(|c| c.is_whitespace() || CELL_SEPARATOR.contains(c))
+            })
     }
 
     fn shows(&self, start: usize, target: &str) -> bool {
@@ -626,9 +1083,35 @@ impl Converter {
             .is_some_and(|label| bare(label.trim_end()).eq_ignore_ascii_case(bare(target)))
     }
 
+    fn holds(&self, start: usize, target: &str) -> bool {
+        self.line
+            .get(start..)
+            .is_some_and(|label| label.to_lowercase().contains(&target.to_lowercase()))
+    }
+
     fn address(&mut self, address: &str) {
-        self.text(address);
+        self.write(address, Source::Address);
         self.gap = self.gap.max(Gap::Word);
+    }
+
+    fn insert(&mut self, at: usize, text: &str) {
+        self.out.insert_str(at, text);
+        if self.trailing_blank >= at {
+            self.trailing_blank += text.len();
+        }
+        for link in &mut self.links {
+            if let Some(written) = &mut link.written
+                && *written >= at
+            {
+                *written += text.len();
+            }
+        }
+    }
+
+    fn write(&mut self, text: &str, source: Source) {
+        let outer = std::mem::replace(&mut self.source, source);
+        self.text(text);
+        self.source = outer;
     }
 
     fn text(&mut self, text: &str) {
@@ -674,16 +1157,22 @@ impl Converter {
         }
         match self.gap {
             Gap::Cell | Gap::Cells(_) if c == ' ' => return,
-            Gap::Cells(cells) => self.kept_cells(cells),
-            Gap::Cell if self.visible => self.line.push_str(CELL_SEPARATOR),
+            Gap::Cells(cells) => self.empty_cells(cells),
+            Gap::Cell if self.visible => {
+                self.line.truncate(self.line.trim_end().len());
+                self.line.push_str(CELL_SEPARATOR);
+            }
             Gap::Cell => self.line.truncate(self.prefix_len),
             Gap::Space => self.line.push(' '),
-            Gap::Word if c.is_alphanumeric() => self.line.push(' '),
+            Gap::Word if !c.is_whitespace() && !CLOSING.contains(&c) => self.line.push(' '),
             Gap::Word | Gap::None => {}
         }
         self.gap = Gap::None;
         if !c.is_whitespace() {
             self.begin_visible();
+        }
+        if c == PIPE && self.piped {
+            self.line.push(ESCAPE);
         }
         self.line.push(c);
     }
@@ -699,6 +1188,12 @@ impl Converter {
             .rev()
             .take_while(|link| link.label.is_none())
             .for_each(|link| link.label = Some(place));
+        if self.source != Source::Address
+            && let Some(link) = self.links.last_mut()
+        {
+            link.last_line = Some(self.finished_lines);
+            link.real |= self.source == Source::Text;
+        }
         self.visible = true;
         self.written += 1;
     }
@@ -717,11 +1212,14 @@ impl Converter {
         }
         self.line_quote = quote;
         self.line.push_str(&QUOTE_PREFIX.repeat(quote));
-        match self.bullet.take() {
-            Some(bullet) => self.line.push_str(&bullet),
-            None => self
-                .line
-                .push_str(&" ".repeat(LIST_INDENT * self.list_depth())),
+        self.piped = self.in_data_cell();
+        if self.piped {
+            self.line.push_str(ROW_START);
+        } else if let Some(bullet) = self.bullet.take() {
+            self.line.push_str(&bullet);
+        } else {
+            self.line
+                .push_str(&" ".repeat(LIST_INDENT * self.list_depth()));
         }
         self.prefix_len = self.line.len();
         self.open = true;
@@ -730,19 +1228,54 @@ impl Converter {
     fn end_line(&mut self) {
         self.close_strike();
         if self.visible {
+            let text_end = self.line.trim_end().len();
+            if self.piped {
+                self.close_row();
+            }
             self.separate_signature();
+            let at = self.out.len() + text_end;
             self.out.push_str(self.line.trim_end());
+            self.note_link_ends(at);
             self.out.push('\n');
+            if self.piped {
+                self.rule();
+            }
             self.last_blank = false;
             self.last_quote = self.line_quote;
-        } else {
+        } else if !self.piped {
             self.blank_line(self.line_quote);
         }
         self.line.clear();
         self.open = false;
         self.visible = false;
+        self.piped = false;
         self.gap = Gap::None;
         self.finished_lines += 1;
+    }
+
+    fn note_link_ends(&mut self, at: usize) {
+        for link in &mut self.links {
+            if link.last_line == Some(self.finished_lines) {
+                link.written = Some(at);
+            }
+        }
+    }
+
+    fn close_row(&mut self) {
+        let spanned = self.tables.last().map_or(0, |table| table.spanned);
+        let empty = self.gap.cells() + spanned;
+        self.line.truncate(self.line.trim_end().len());
+        self.line.push_str(&CELL_END.repeat(empty + 1));
+    }
+
+    fn rule(&mut self) {
+        let Some(table) = self.tables.last().filter(|table| !table.ruled) else {
+            return;
+        };
+        self.out.push_str(&QUOTE_PREFIX.repeat(self.line_quote));
+        self.out.push_str(&RULE_CELL.repeat(table.cells));
+        self.out.push(PIPE);
+        self.out.push('\n');
     }
 
     fn separate_signature(&mut self) {
@@ -769,6 +1302,30 @@ impl Converter {
         self.last_blank = true;
     }
 
+    fn block_in(&mut self, name: &str, block: Block) {
+        if self.softens(name) {
+            self.soft_break();
+        } else {
+            self.block(block);
+        }
+    }
+
+    fn softens(&self, name: &str) -> bool {
+        if TABLE_PARTS.contains(&name) {
+            name == "table" && self.in_flat_cell()
+                || self.tables.last().is_some_and(|table| table.in_flat)
+        } else {
+            self.in_data_cell() || self.in_flat_cell()
+        }
+    }
+
+    fn soft_break(&mut self) {
+        self.flush_word_marker();
+        if self.open {
+            self.gap = self.gap.max(Gap::Space);
+        }
+    }
+
     fn block(&mut self, block: Block) {
         self.flush_word_marker();
         if self.open {
@@ -787,6 +1344,10 @@ impl Converter {
     }
 
     fn hard_break(&mut self) {
+        if self.in_data_cell() || self.in_flat_cell() {
+            self.soft_break();
+            return;
+        }
         self.flush_word_marker();
         if !self.open {
             self.open_line();
@@ -820,7 +1381,12 @@ fn is_hidden(tag: &StartTag<()>, style: &Style) -> bool {
         || style.is("display", "none")
         || style.is("visibility", "hidden")
         || style.value("opacity").is_some_and(is_zero)
-        || style.value("max-height").is_some_and(is_zero) && style.is("overflow", "hidden")
+        || style.is("overflow", "hidden")
+            && COLLAPSED.iter().any(|property| {
+                style
+                    .value(property)
+                    .is_some_and(|size| is_zero(size) || is_tiny(size))
+            })
 }
 
 fn is_struck(name: &str, style: &Style) -> bool {
@@ -833,12 +1399,15 @@ fn is_struck(name: &str, style: &Style) -> bool {
 }
 
 fn is_signature(tag: &StartTag<()>) -> bool {
-    attribute(tag, "id").is_some_and(|id| SIGNATURE_IDS.contains(&unprefixed(&id)))
-        || attribute(tag, "class").is_some_and(|class| {
-            class
-                .split_whitespace()
-                .any(|name| SIGNATURE_CLASSES.contains(&unprefixed(name)))
-        })
+    attribute(tag, "id").is_some_and(|id| {
+        SIGNATURE_IDS
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(unprefixed(&id)))
+    }) || attribute(tag, "class").is_some_and(|class| {
+        class
+            .split_whitespace()
+            .any(|name| SIGNATURE_CLASSES.contains(&unprefixed(name)))
+    })
 }
 
 fn unprefixed(name: &str) -> &str {
@@ -857,7 +1426,7 @@ fn is_outlook_quote(tag: &StartTag<()>, style: &Style) -> bool {
             .value(property)
             .is_some_and(|value| value.starts_with(start))
     };
-    attribute(tag, "id").is_some_and(|id| unprefixed(&id) == OUTLOOK_QUOTE)
+    attribute(tag, "id").is_some_and(|id| OUTLOOK_QUOTES.contains(&unprefixed(&id)))
         || style.is("border", "none") && starts("border-top", "solid") && starts("padding", "3.0pt")
 }
 
@@ -922,6 +1491,22 @@ fn shifted(digit: char, zero: char) -> char {
     char::from_u32(u32::from(zero) + u32::from(digit) - u32::from('0')).unwrap_or(digit)
 }
 
+fn column_span(tag: &StartTag<()>) -> usize {
+    attribute(tag, "colspan")
+        .and_then(|span| span.trim().parse().ok())
+        .unwrap_or(1)
+        .clamp(1, MAX_SPAN)
+}
+
+fn name_of(text: &str) -> Option<String> {
+    let name = text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(is_invisible, "");
+    (!name.is_empty()).then_some(name)
+}
+
 fn list_start(tag: &StartTag<()>) -> i64 {
     attribute(tag, "start")
         .and_then(|start| start.trim().parse().ok())
@@ -937,7 +1522,10 @@ fn link_target(tag: &StartTag<()>) -> Option<String> {
     LINK_SCHEMES
         .iter()
         .any(|scheme| has_prefix(href, scheme))
-        .then(|| href.to_string())
+        .then(|| {
+            href.replace(char::is_whitespace, "%20")
+                .replace(PIPE, "%7C")
+        })
 }
 
 fn display(href: &str) -> String {
@@ -1012,6 +1600,10 @@ mod tests {
             to_text("<ul><li>one<li>two</ul>after"),
             "- one\n- two\n\nafter\n"
         );
+        assert_eq!(
+            to_text("one</br>two<span hidden></br></span>three"),
+            "one\ntwothree\n"
+        );
     }
 
     #[test]
@@ -1071,17 +1663,109 @@ mod tests {
     }
 
     #[test]
-    fn tables_with_headers_keep_their_empty_cells() {
-        let html = "<table><tr><th></th><th>Qty</th><th>Price</th></tr>\
+    fn tables_with_a_header_row_become_pipe_tables() {
+        let html = "<p>Order:</p><table><tr><th></th><th>Qty</th><th>Price</th></tr>\
                     <tr><td>Scarf</td><td></td><td>12 €</td></tr>\
                     <tr><td>Hat</td><td>2</td><td>&nbsp;</td></tr>\
                     <tr><td></td><td></td><td></td></tr>\
+                    <tr><td>&nbsp;</td><td>&nbsp;</td></tr>\
                     <tr><td>Shop</td><td></td>\
                     <td><a href=\"https://example.com/\">example.com</a></td></tr>\
-                    <tr><td><p>Note</p></td><td>late</td></tr></table>";
+                    <tr><td><p>Note</p><p>two</p></td><td>a<br>b | c</td></tr>\
+                    <tr><td height=\"20\" style=\"line-height:20px\"></td></tr></table>\
+                    <div>After</div>";
         assert_eq!(
             to_text(html),
-            "· Qty · Price\nScarf · · 12 €\nHat · 2\nShop · · https://example.com/\n\nNote\n\nlate\n"
+            "Order:\n\n| | Qty | Price |\n|---|---|---|\n| Scarf | | 12 € |\n| Hat | 2 | |\n\
+             | Shop | | https://example.com/ |\n| Note two | a b \\| c |\n\nAfter\n"
+        );
+        assert_eq!(
+            to_text(
+                "<blockquote><table><thead><tr><th>A</th><th>B</th></tr></thead>\
+                 <tbody><tr><td>1</td><td>2</td></tr></tbody></table></blockquote>"
+            ),
+            "> | A | B |\n> |---|---|\n> | 1 | 2 |\n"
+        );
+        assert_eq!(
+            to_text(
+                "<table><tr><th colspan=\"2\">Item</th><th>Price</th></tr>\
+                 <tr><td>Scarf</td><td>blue</td><td>12 €</td></tr>\
+                 <tr><th colspan=\"2\">Total</th><td>12 €</td></tr>\
+                 <tr><td colspan=\"2\">Note</td><td colspan=\"9999\"></td></tr></table>"
+            ),
+            "| Item | | Price |\n|---|---|---|\n| Scarf | blue | 12 € |\n| Total | | 12 € |\n\
+             | Note"
+                .to_string()
+                + &" |".repeat(18)
+                + "\n"
+        );
+    }
+
+    #[test]
+    fn other_tables_with_header_cells_stay_lines() {
+        let empty_header = "<table><tr><th></th><th>&nbsp;</th></tr>\
+                            <tr><td>Logo</td><td><p>Text</p></td></tr></table>";
+        assert_eq!(to_text(empty_header), "Logo · Text\n");
+        let one_row = "<table><tr><th>Column</th><th>Expander</th></tr></table>";
+        assert_eq!(to_text(one_row), "Column · Expander\n");
+        let header_cells_only = "<table><tr><th>Subtotal:</th><th>25,90 EUR</th></tr>\
+                                 <tr><th>Shipping:</th><th>5,99 EUR</th></tr></table>";
+        assert_eq!(
+            to_text(header_cells_only),
+            "Subtotal: · 25,90 EUR\nShipping: · 5,99 EUR\n"
+        );
+        let empty_rows = "<table><tr><th>Small</th><th>Large</th></tr>\
+                          <tr><td><img src=\"a.png\"></td><td></td></tr></table>";
+        assert_eq!(to_text(empty_rows), "Small · Large\n");
+        let one_column = "<table><tr><th>Address</th></tr><tr><td>Street 1</td></tr></table>";
+        assert_eq!(to_text(one_column), "Address\nStreet 1\n");
+        let row_headers = "<table><tr><th>Total</th><td>12 €</td></tr>\
+                           <tr><th>Paid</th><td></td></tr></table>";
+        assert_eq!(to_text(row_headers), "Total · 12 €\nPaid\n");
+        let nested = "<table><tr><th>Outer</th><th>Side</th></tr><tr><td>\
+                      <table><tr><th>Inner</th><th>Count</th></tr><tr><td>x</td><td>1</td></tr></table>\
+                      </td></tr></table>";
+        assert_eq!(
+            to_text(nested),
+            "Outer · Side\n\n| Inner | Count |\n|---|---|\n| x | 1 |\n"
+        );
+    }
+
+    #[test]
+    fn a_row_of_one_line_cells_stays_one_line() {
+        let shop = "<p>Order:</p><table>\
+                    <tr><td><p>Subtotal</p></td><td><strong>€81,00</strong></td></tr>\
+                    <tr><td><p style=\"margin:0\">Credits:</p></td><td>&nbsp;</td>\
+                    <td><p>1</p></td></tr>\
+                    <tr><td><table><tr><td>Tax</td></tr></table></td><td>&nbsp;</td>\
+                    <td><table><tr><td><div>€9.00</div></td></tr></table></td></tr>\
+                    <tr><td><h3>Total</h3></td><td>€90.00<br></td></tr></table><p>After</p>";
+        assert_eq!(
+            to_text(shop),
+            "Order:\n\nSubtotal · €81,00\nCredits: · 1\nTax · €9.00\nTotal · €90.00\n\nAfter\n"
+        );
+    }
+
+    #[test]
+    fn rows_with_one_text_or_with_several_lines_keep_their_breaks() {
+        let column = "<table><tr><td><h1>News</h1><p>Text</p></td></tr>\
+                      <tr><td><h2>Title</h2></td><td><img src=\"a.png\" alt=\"\"></td></tr>\
+                      <tr><td><p>Body</p></td></tr></table>";
+        assert_eq!(to_text(column), "News\n\nText\n\nTitle\n\nBody\n");
+        let lines = "<table><tr><td><p>a</p><p>b</p></td><td><p>c</p></td></tr></table>";
+        assert_eq!(to_text(lines), "a\n\nb\n\nc\n");
+    }
+
+    #[test]
+    fn a_cell_of_several_lines_does_not_join_the_next() {
+        let html = "<table><tr><td><span>Chat with us<br>on WhatsApp</span></td>\
+                    <td>Help<br>center</td><td>Shop</td></tr>\
+                    <tr><td>[DEP]</td><td>Departure<br>06:55</td><td>[ARR]</td><td>Arrival</td></tr>\
+                    <tr><td>Left&nbsp;</td><td>Right</td></tr></table>";
+        assert_eq!(
+            to_text(html),
+            "Chat with us\non WhatsApp\nHelp\ncenter\nShop\n[DEP] · Departure\n06:55\n\
+             [ARR] · Arrival\nLeft · Right\n"
         );
     }
 
@@ -1120,6 +1804,17 @@ mod tests {
             "https://example.com/x\n"
         );
         assert_eq!(
+            to_text("<a href=\" https://example.com/f?no=XY 1234&amp;x=1 \">Flight</a>"),
+            "Flight <https://example.com/f?no=XY%201234&x=1>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<table><tr><th>Pick</th><th>Note</th></tr><tr><td>\
+                     <a href=\"https://example.com/?a|b\">This</a></td><td>x</td></tr></table>"
+            ),
+            "| Pick | Note |\n|---|---|\n| This <https://example.com/?a%7Cb> | x |\n"
+        );
+        assert_eq!(
             to_text("<a href=\"https://www.example.com/\">example.com</a>"),
             "https://www.example.com/\n"
         );
@@ -1137,7 +1832,7 @@ mod tests {
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/a\"><div>Title</div></a>"),
-            "Title\n<https://example.com/a>\n"
+            "Title <https://example.com/a>\n"
         );
         assert_eq!(to_text("x<a href=\"https://example.com/\"> </a>y"), "x y\n");
         assert_eq!(
@@ -1176,6 +1871,142 @@ mod tests {
             ),
             "Scarf <https://example.com/p> Scarf, blue <https://example.com/q> \
              https://example.com/r next.\n"
+        );
+    }
+
+    #[test]
+    fn a_link_around_blocks_ends_on_its_last_line() {
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/b\"><table><tr><td>Download</td></tr></table></a>\
+                 <p>Next</p>"
+            ),
+            "Download <https://example.com/b>\n\nNext\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/c\"><div>Name</div><div>Headline</div></a>\
+                 <div>After</div>"
+            ),
+            "Name\nHeadline <https://example.com/c>\nAfter\n"
+        );
+        assert_eq!(
+            to_text("<a href=\"https://example.com/t\"><p>Track</p></a>after"),
+            "Track <https://example.com/t>\n\nafter\n"
+        );
+        assert_eq!(
+            to_text("<a href=\"https://example.com/o\"><div>One</div><div>&nbsp;</div></a>"),
+            "One <https://example.com/o>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<blockquote><a href=\"https://example.com/q\"><div>Quoted</div></a>\
+                 <div>More</div></blockquote>"
+            ),
+            "> Quoted <https://example.com/q>\n> More\n"
+        );
+    }
+
+    #[test]
+    fn nested_links_write_their_address_once() {
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/n\" aria-label=\"Accept the invitation\">\
+                 <table><tr><td><a href=\"https://example.com/n\">Accept</a></td></tr></table></a>"
+            ),
+            "Accept <https://example.com/n>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/o\">Name<table><tr><td>\
+                 <a href=\"https://example.com/f\">Follow</a></td></tr></table></a>"
+            ),
+            "Name <https://example.com/o>\nFollow <https://example.com/f>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/1\">One <a href=\"https://example.com/2\">Two</a></a>"
+            ),
+            "One <https://example.com/1> Two <https://example.com/2>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/v\">Shown<div style=\"display:none\">\
+                 <a href=\"https://example.com/h\">hidden</a> too</div></a>"
+            ),
+            "Shown <https://example.com/v>\n"
+        );
+    }
+
+    #[test]
+    fn image_links_take_a_name_or_stay_away() {
+        let html = "<div><a href=\"https://example.com/logo\"><img src=\"l.png\" alt=\"\"></a>Text</div>\
+                    <div><a href=\"https://example.com/x\" aria-label=\"Example\"><img src=\"x.png\" alt=\"\"></a></div>\
+                    <div><a href=\"https://example.com/y\" title=\" Our  shop \"><img src=\"y.png\"></a></div>\
+                    <div><a href=\"https://example.com/z\"><img src=\"z.png\" alt=\" \" title=\"Zed\"></a></div>\
+                    <div><a href=\"https://example.com/w\"><img src=\"w.png\"></a></div>";
+        assert_eq!(
+            to_text(html),
+            "Text\nExample <https://example.com/x>\nOur shop <https://example.com/y>\n\
+             Zed <https://example.com/z>\nhttps://example.com/w\n"
+        );
+    }
+
+    #[test]
+    fn an_image_link_beside_a_text_link_to_the_same_place_goes() {
+        assert_eq!(
+            to_text(
+                "<table><tr><td>Choose</td><td><a href=\"https://example.com/p\"><img src=\"i.png\" alt=\"Icon\"></a></td>\
+                 <td><a href=\"https://example.com/p\">Book a place</a></td></tr></table>"
+            ),
+            "Choose · Book a place <https://example.com/p>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/q\">Read more</a> \
+                 <a href=\"https://example.com/q\"><img src=\"a.png\" alt=\"Arrow\"></a> \
+                 <a href=\"https://example.com/r\">Help</a><a href=\"https://example.com/r\"><img src=\"b.png\"></a>\
+                 <a href=\"https://example.com/s\"><img src=\"c.png\" alt=\"Shop\"></a>"
+            ),
+            "Read more <https://example.com/q> Help <https://example.com/r> Shop <https://example.com/s>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<table><tr><td><a href=\"https://example.com/h?n=1\" title=\"Returns\"><img src=\"r.png\"></a></td>\
+                 <td><a href=\"https://example.com/h?n=2\">Returns</a></td></tr>\
+                 <tr><td><a href=\"https://example.com/m?n=1\">More</a></td>\
+                 <td><a href=\"https://example.com/m?n=2\"><img src=\"m.png\" alt=\"More\"></a></td></tr></table>"
+            ),
+            "Returns <https://example.com/h?n=2>\nMore <https://example.com/m?n=1>\n"
+        );
+        assert_eq!(
+            to_text(
+                "<p><a href=\"https://example.com/w\">See our <a href=\"https://example.com/w\">website</a> \
+                 or <a href=\"https://example.com/w\">this</a></a> · <a href=\"https://example.com/w\">FAQ</a></p>"
+            ),
+            "See our website <https://example.com/w> or this <https://example.com/w> · \
+             FAQ <https://example.com/w>\n"
+        );
+    }
+
+    #[test]
+    fn link_text_is_trimmed_and_not_repeated() {
+        assert_eq!(
+            to_text("<a href=\"https://example.com/s\">Shop page&nbsp;&nbsp;&nbsp;</a> next"),
+            "Shop page <https://example.com/s> next\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"mailto:service@example.com\">E-Mail: service&shy;@&shy;example.com</a>"
+            ),
+            "E-Mail: service@example.com\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/a\">Home</a>·<a href=\"https://example.com/d\">Docs</a>, \
+                 (<a href=\"https://example.com/e\">More</a>)."
+            ),
+            "Home <https://example.com/a> ·Docs <https://example.com/d>, (More <https://example.com/e>).\n"
         );
     }
 
@@ -1221,8 +2052,11 @@ mod tests {
                     <div style=\"font-size: 0\"><div style=\"font-size: 14px\">d</div></div>\
                     <span style=\"mso-hide: all\">e</span> <span style=\"opacity: 0.5\">f</span>\
                     <div style=\"display: none; display: block\">g</div>\
-                    <div style=\"display: block; display: none\">h</div>";
-        assert_eq!(to_text(html), "c\nd\ne f\ng\n");
+                    <div style=\"display: block; display: none\">h</div>\
+                    <span style=\"max-height:1px;max-width:1px;overflow:hidden\">i</span>\
+                    <span style=\"max-width:0;overflow:hidden\">j</span>\
+                    <span style=\"max-height:2px;overflow:hidden\">k</span>";
+        assert_eq!(to_text(html), "c\nd\ne f\ng\nk\n");
     }
 
     #[test]
@@ -1308,6 +2142,14 @@ mod tests {
             to_text("<blockquote><div>Old</div><div id=\"x_Signature\">Jane</div></blockquote>"),
             "> Old\n>\n> --\n> Jane\n"
         );
+        assert_eq!(
+            to_text(
+                "<div>Regards</div><div id=\"signature\"></div>\
+                 <table summary=\"Email signature\"><tr><td><div id=\"signature\">\
+                 Jane Doe<br>Example Ltd</div></td></tr></table>"
+            ),
+            "Regards\n\n--\nJane Doe\nExample Ltd\n"
+        );
     }
 
     #[test]
@@ -1388,6 +2230,11 @@ mod tests {
             to_text(inside),
             "> Reply\n>\n> > From: Paul\n> > Older\n\nAfter\n"
         );
+        let new_outlook = "<div>Fine.</div><div id=\"mail-editor-reference-message-container\">\
+                           <div style=\"padding: 3pt 0in 0in; border-style: solid none none\">\
+                           <b>From: </b>Maria<br></div>\
+                           <div id=\"mail-editor-reference-message-body\">Friday?</div></div>";
+        assert_eq!(to_text(new_outlook), "Fine.\n\n> From: Maria\n> Friday?\n");
     }
 
     #[test]

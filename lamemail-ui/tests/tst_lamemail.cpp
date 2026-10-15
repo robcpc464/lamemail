@@ -428,6 +428,35 @@ exit "$(cat "$dir/code")"
                 QStringLiteral("https://") + news + query, QStringLiteral("https://") + onward }));
     }
 
+    void pipeTablesLineUpTheirColumns()
+    {
+        const QString query = QStringLiteral("?token=") + QString(80, u'x');
+        const QString longLink = QStringLiteral("https://example.com/track") + query;
+        const LinkedText linked = linkedText(
+            QStringLiteral("Order:\n\n| Item | Price |\n|---|---|\n| Wool scarf | 29,00 € |\n"
+                           "| Rain jacket \\| blue | 119,00 € |\n| 日本茶 | |\n| Total |\n"
+                           "| Track | %1 |\n\n| Not | a table |\n| without | rule |")
+                .arg(longLink));
+        QTextDocument document;
+        document.setHtml(linked.html);
+        const QString shown = QStringLiteral("https://example.com/track?token=") + QString(18, u'x')
+            + QStringLiteral("\u2026");
+        QCOMPARE(document.toPlainText(),
+            QStringLiteral("Order:\n\n"
+                           "| Item                | Price%1 |\n"
+                           "|---------------------|-%2-|\n"
+                           "| Wool scarf          | 29,00 €%3 |\n"
+                           "| Rain jacket \\| blue | 119,00 €%4 |\n"
+                           "| 日本茶              | %5 |\n"
+                           "| Total               |\n"
+                           "| Track               | %6 |\n\n"
+                           "| Not | a table |\n| without | rule |")
+                .arg(QString(46, u' '), QString(51, u'-'), QString(44, u' '), QString(43, u' '),
+                    QString(51, u' '), shown));
+        QCOMPARE(anchors(document), QStringList({ longLink + QStringLiteral(" = ") + shown }));
+        QCOMPARE(linked.shortened, QStringList({ longLink }));
+    }
+
     void mailtoLinksAskForANewMail()
     {
         Mailto mailto;
@@ -1124,7 +1153,7 @@ exit "$(cat "$dir/code")"
     {
         Mail mail;
         answer(
-            R"({"account":"private","color":"cyan","kind":"trash","path":"private/inbox/x-1.json","received":"2026-09-15T14:32:05+02:00","from":[{"name":"Jane Doe","address":"jane@example.com"}],"to":[{"name":null,"address":"me@example.com"}],"cc":[{"name":"Paul","address":"paul@example.com"}],"bcc":[{"name":null,"address":"tom@example.com"}],"subject":"Offer","message_id":"o1@example.com","body":"Hi\n\nJane\n\n","flags":{"seen":true,"answered":false,"flagged":true,"draft":false,"keywords":[]},"answer_from":{"name":"Me","address":"me@example.com"},"answer_to":[{"name":"Jane Doe","address":"jane@example.com"}],"answer_cc":[{"name":"Paul","address":"paul@example.com"},{"name":null,"address":"maria@example.com"}],"answer_subject":"Re: Offer","forward_subject":"Fwd: Offer","quote":"Jane wrote:\n> Hi\n","signature":"Me\nexample.com","parent":"private/inbox/p-2.json","parts":[{"kind":"text","text":"Hi"},{"kind":"quote","attribution":"Jane wrote","parts":[{"kind":"text","text":"Old"}]}],"attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394},{"index":1,"name":null,"type":"image/png","size":10}]})"
+            R"({"account":"private","color":"cyan","kind":"trash","path":"private/inbox/x-1.json","received":"2026-09-15T14:32:05+02:00","from":[{"name":"Jane Doe","address":"jane@example.com"}],"to":[{"name":null,"address":"me@example.com"}],"cc":[{"name":"Paul","address":"paul@example.com"}],"bcc":[{"name":null,"address":"tom@example.com"}],"subject":"Offer","message_id":"o1@example.com","body":"Hi\n\nJane\n\n","flags":{"seen":true,"answered":false,"flagged":true,"draft":false,"keywords":[]},"answer_from":{"name":"Me","address":"me@example.com"},"answer_to":[{"name":"Jane Doe","address":"jane@example.com"}],"answer_cc":[{"name":"Paul","address":"paul@example.com"},{"name":null,"address":"maria@example.com"}],"answer_subject":"Re: Offer","forward_subject":"Fwd: Offer","quote":"Jane wrote:\n> Hi\n","signature":"Me\nexample.com","parent":"private/inbox/p-2.json","parts":[{"kind":"text","text":"Hi"},{"kind":"quote","attribution":"Jane wrote","parts":[{"kind":"text","text":"Old"}]}],"attachments":[{"index":0,"name":"offer.pdf","type":"application/pdf","size":120394},{"index":1,"name":null,"type":"image/png","size":10,"inline":true}]})"
             "\n");
         QString loaded;
         connect(&mail, &Mail::loadingChanged, this, [&] {
@@ -1186,6 +1215,8 @@ exit "$(cat "$dir/code")"
             QVariant(QStringLiteral("118 KB")));
         QCOMPARE(mail.attachments().last().toMap().value(QStringLiteral("name")),
             QVariant(QStringLiteral("image/png")));
+        QVERIFY(!mail.attachments().first().toMap().value(QStringLiteral("inline")).toBool());
+        QVERIFY(mail.attachments().last().toMap().value(QStringLiteral("inline")).toBool());
         QVERIFY(mail.flagged());
 
         QSignalSpy changed(&mail, &Mail::changed);

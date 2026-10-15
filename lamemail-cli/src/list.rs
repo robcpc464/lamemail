@@ -272,7 +272,11 @@ fn entry(file: MailFile, located: &Located) -> Entry {
         flags: file.flags,
         pinned: false,
         size: file.size,
-        attachments: file.attachments.len(),
+        attachments: file
+            .attachments
+            .iter()
+            .filter(|attachment| !attachment.inline)
+            .count(),
         preview: preview(&file.body),
     }
 }
@@ -512,7 +516,11 @@ mod tests {
         }
         assert_eq!(json["color"], "blue");
         assert_eq!(json["attachments"], 1);
-        assert_eq!(json["preview"], "Text version.");
+        let mut shown_inline = sample();
+        shown_inline.attachments[0].inline = true;
+        let json = serde_json::to_value(super::entry(shown_inline, &item)).unwrap();
+        assert_eq!(json["attachments"], 0);
+        assert_eq!(json["preview"], "HTML version.");
         assert_eq!(json["flags"]["seen"], false);
         assert_eq!(json["folder"], "inbox");
         assert_eq!(json["style"]["icon"], "incoming");
@@ -532,7 +540,7 @@ mod tests {
             "jane@example",
             "doe",
             "me@",
-            "text version",
+            "html version",
         ] {
             assert!(matches(&file, &search_words(search)), "{search}");
         }

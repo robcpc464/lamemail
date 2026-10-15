@@ -78,7 +78,11 @@ async fn save(
                 .find(|attachment| attachment.index == index)
                 .with_context(|| missing(&located, index))?,
         ],
-        None => file.attachments,
+        None => file
+            .attachments
+            .into_iter()
+            .filter(|attachment| !attachment.inline)
+            .collect(),
     };
     let kept: Vec<Option<PathBuf>> = chosen
         .iter()
@@ -235,7 +239,10 @@ mod tests {
             fixture.dev.join("private/INBOX/2,S.eml"),
             "Subject: offers\r\nMIME-Version: 1.0\r\n\
              Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n\
-             --b\r\nContent-Type: text/plain\r\n\r\nTwo offers.\r\n\
+             --b\r\nContent-Type: multipart/related; boundary=\"r\"\r\n\r\n\
+             --r\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:logo\">Two offers.\r\n\
+             --r\r\nContent-Type: image/png\r\nContent-ID: <logo>\r\n\
+             Content-Disposition: inline; filename=\"logo.png\"\r\n\r\npng\r\n--r--\r\n\
              --b\r\nContent-Type: application/pdf\r\n\
              Content-Disposition: attachment; filename=\"offer.pdf\"\r\n\r\none\r\n\
              --b\r\nContent-Type: application/pdf\r\n\
@@ -263,6 +270,11 @@ mod tests {
         );
         assert_eq!(fs::read(&first[0]).unwrap(), b"one");
         assert_eq!(fs::read(&first[1]).unwrap(), b"two");
+        let logo = super::save(&fixture.dir, Some(&fixture.dev), &path, Some(0), &place)
+            .await
+            .unwrap();
+        assert_eq!(logo[0].path, downloads.join("logo.png"));
+        assert!(logo[0].attachment.inline);
         let mode = fs::metadata(&first[0]).unwrap().permissions().mode();
         assert_ne!(mode & 0o200, 0);
         assert_eq!(
@@ -289,6 +301,7 @@ mod tests {
                 name: name.map(str::to_string),
                 content_type: "application/pdf".to_string(),
                 size: 1,
+                inline: false,
             })
         };
         assert_eq!(named(Some("offer.pdf")), "offer.pdf");

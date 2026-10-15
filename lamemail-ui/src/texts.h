@@ -149,6 +149,9 @@ struct Texts {
     const char* downloadFolder;
     const char* downloadFolderHint;
     const char* downloadAll;
+    const char* inlineImages;
+    const char* showInline;
+    const char* hideInline;
     const char* newMails;
     const char* noTray;
     const char* open;
@@ -300,6 +303,9 @@ class Strings : public QObject {
     Q_PROPERTY(QString downloadFolder READ downloadFolder CONSTANT)
     Q_PROPERTY(QString downloadFolderHint READ downloadFolderHint CONSTANT)
     Q_PROPERTY(QString downloadAll READ downloadAll CONSTANT)
+    Q_PROPERTY(QString inlineImages READ inlineImages CONSTANT)
+    Q_PROPERTY(QString showInline READ showInline CONSTANT)
+    Q_PROPERTY(QString hideInline READ hideInline CONSTANT)
     Q_PROPERTY(QString noTray READ noTray CONSTANT)
     Q_PROPERTY(QString open READ open CONSTANT)
     Q_PROPERTY(QString quit READ quit CONSTANT)
@@ -497,6 +503,9 @@ public:
     QString downloadFolder() const { return QString::fromUtf8(texts().downloadFolder); }
     QString downloadFolderHint() const { return QString::fromUtf8(texts().downloadFolderHint); }
     QString downloadAll() const { return QString::fromUtf8(texts().downloadAll); }
+    QString inlineImages() const { return QString::fromUtf8(texts().inlineImages); }
+    QString showInline() const { return QString::fromUtf8(texts().showInline); }
+    QString hideInline() const { return QString::fromUtf8(texts().hideInline); }
     QString noTray() const { return QString::fromUtf8(texts().noTray); }
     QString open() const { return QString::fromUtf8(texts().open); }
     QString quit() const { return QString::fromUtf8(texts().quit); }

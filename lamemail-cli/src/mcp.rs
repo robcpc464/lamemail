@@ -294,7 +294,7 @@ fn tools() -> Value {
         },
         {
             "name": "show_message",
-            "description": "One message as a JSON object: the headers, its text as parts (text, signature and nested quotes), attachments (name, type and size only), the account's signature, and what a reply would use: answer_to, answer_cc, answer_from, answer_subject, forward_subject and quote, the original quoted with its \"… wrote:\" line.",
+            "description": "One message as a JSON object: the headers, its text as parts (text, signature and nested quotes), attachments (name, type, size and whether the HTML shows them inline, never their content), the account's signature, and what a reply would use: answer_to, answer_cc, answer_from, answer_subject, forward_subject and quote, the original quoted with its \"… wrote:\" line.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "path": path },

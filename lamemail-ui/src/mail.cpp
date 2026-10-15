@@ -190,6 +190,7 @@ Mail::Shown Mail::parse(const QByteArray& json, QString* error)
                 name.isEmpty() ? attachment.value(QLatin1String("type")).toString() : name },
             { QStringLiteral("size"),
                 fileSize(attachment.value(QLatin1String("size")).toInteger()) },
+            { QStringLiteral("inline"), attachment.value(QLatin1String("inline")).toBool() },
         });
     }
     return {
