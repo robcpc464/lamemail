@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.4.0
 
 - Tables in mail become text tables (`| Item | Price |`), and the UI lines
   up their columns; copying keeps them aligned.
