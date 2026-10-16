@@ -146,6 +146,9 @@ struct Texts {
     const char* shadowsMissing;
     const char* notifications;
     const char* notificationsHint;
+    const char* checkUpdates;
+    const char* checkUpdatesHint;
+    const char* updateAvailable;
     const char* downloadFolder;
     const char* downloadFolderHint;
     const char* downloadAll;
@@ -300,6 +303,9 @@ class Strings : public QObject {
     Q_PROPERTY(QString shadowsMissing READ shadowsMissing CONSTANT)
     Q_PROPERTY(QString notifications READ notifications CONSTANT)
     Q_PROPERTY(QString notificationsHint READ notificationsHint CONSTANT)
+    Q_PROPERTY(QString checkUpdates READ checkUpdates CONSTANT)
+    Q_PROPERTY(QString checkUpdatesHint READ checkUpdatesHint CONSTANT)
+    Q_PROPERTY(QString updateAvailable READ updateAvailable CONSTANT)
     Q_PROPERTY(QString downloadFolder READ downloadFolder CONSTANT)
     Q_PROPERTY(QString downloadFolderHint READ downloadFolderHint CONSTANT)
     Q_PROPERTY(QString downloadAll READ downloadAll CONSTANT)
@@ -500,6 +506,9 @@ public:
     QString shadowsMissing() const { return QString::fromUtf8(texts().shadowsMissing); }
     QString notifications() const { return QString::fromUtf8(texts().notifications); }
     QString notificationsHint() const { return QString::fromUtf8(texts().notificationsHint); }
+    QString checkUpdates() const { return QString::fromUtf8(texts().checkUpdates); }
+    QString checkUpdatesHint() const { return QString::fromUtf8(texts().checkUpdatesHint); }
+    QString updateAvailable() const { return QString::fromUtf8(texts().updateAvailable); }
     QString downloadFolder() const { return QString::fromUtf8(texts().downloadFolder); }
     QString downloadFolderHint() const { return QString::fromUtf8(texts().downloadFolderHint); }
     QString downloadAll() const { return QString::fromUtf8(texts().downloadAll); }

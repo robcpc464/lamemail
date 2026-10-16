@@ -4,6 +4,7 @@ import email.message
 import email.policy
 import email.utils
 import html
+import json
 import os
 import shutil
 import struct
@@ -199,6 +200,11 @@ Nächstes Treffen: Dienstag in zwei Wochen, 10:00, Raum Berlin.
 Viele Grüße
 Paul
 """
+LATEST_RELEASE = {
+    "tag_name": "v99.0.0",
+    "html_url": "https://example.com/lamemail/releases/tag/v99.0.0",
+    "body": "- A release far in the future, so the UI can show its hint",
+}
 NEWSLETTER_IMAGES = [
     ("logo@shop.example.com", "logo.png", png(160, 48, (34, 34, 34), [((16, 16, 144, 32), (255, 255, 255))])),
     ("social@shop.example.com", "social.png", png(24, 24, (59, 89, 152), [((8, 8, 16, 16), (255, 255, 255))])),
@@ -563,6 +569,9 @@ def main():
             for entry in written:
                 write(account, *entry)
                 total += 1
+    os.makedirs(f"{SERVER}/.releases")
+    with open(f"{SERVER}/.releases/latest.json", "w") as f:
+        json.dump(LATEST_RELEASE, f)
     print(f"{total} messages on the development server {SERVER}")
 
 

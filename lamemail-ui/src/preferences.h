@@ -18,6 +18,7 @@ class Preferences : public QObject {
     Q_PROPERTY(bool shadowsAvailable READ shadowsAvailable CONSTANT)
     Q_PROPERTY(
         bool notifications READ notifications WRITE setNotifications NOTIFY notificationsChanged)
+    Q_PROPERTY(bool checkUpdates READ checkUpdates WRITE setCheckUpdates NOTIFY checkUpdatesChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString downloadFolder READ downloadFolder WRITE setDownloadFolder NOTIFY
             downloadFolderChanged)
@@ -43,6 +44,8 @@ public:
     static void setShadowsAvailable(bool available);
     bool notifications() const;
     void setNotifications(bool on);
+    static bool checkUpdates();
+    void setCheckUpdates(bool on);
     static QString theme();
     void setTheme(const QString& name);
     static QString downloadFolder();
@@ -58,6 +61,7 @@ signals:
     void feedKindsChanged();
     void shadowsChanged();
     void notificationsChanged();
+    void checkUpdatesChanged();
     void themeChanged();
     void downloadFolderChanged();
 };

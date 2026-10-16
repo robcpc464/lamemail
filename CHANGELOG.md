@@ -2,6 +2,13 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- "Check for updates" in the general settings (off unless switched on)
+  asks GitHub once a day whether a newer version is out and then shows a
+  dot on the gear and a link to the release; nothing is downloaded.
+  `lamemail update check` asks on the command line.
+
 ## 0.4.0
 
 - Tables in mail become text tables (`| Item | Price |`), and the UI lines

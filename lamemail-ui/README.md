@@ -334,6 +334,11 @@ failed.
     shows unless "Close to tray" is on and a tray is there.
     "Notifications" (on unless changed) announces new mail on the desktop
     while the window is in the background.
+    "Check for updates" (off unless switched on) asks once a day, through
+    `lamemail update check`, whether a newer version is out; then a dot
+    sits on the gear, the version at the bottom of the sidebar names the
+    new one, and "Info" links to its release, which says how to install
+    it. Nothing is downloaded.
     "Shadows" (on unless changed) puts a soft shadow under menus, tooltips
     and messages; it needs the Qt module `QtQuick.Effects` (part of
     `qt6-declarative` on Arch, `qml6-module-qtquick-effects` on Debian and
@@ -400,7 +405,8 @@ failed.
     border, the arrow at the end of a row resets the kind to its defaults
   - CLI: every command of `lamemail` with its usage, arguments and help,
     read from `lamemail commands --json`
-  - Info: the version, links to the source code and to the issues on
+  - Info: the version (and a newer one with its release, see "Check for
+    updates"), links to the source code and to the issues on
     GitHub, the licence (GPL-3.0-or-later, its text at gnu.org), the
     software used (Qt, the Lucide icons, the Rust libraries) and a
     notice on warranty and liability

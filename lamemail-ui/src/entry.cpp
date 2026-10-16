@@ -390,3 +390,16 @@ std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* er
         .earlier = used("earlier"),
     };
 }
+
+std::optional<Release> releaseFromJson(const QByteArray& line, QString* error)
+{
+    const auto parsed = object(line, "latest", error);
+    if (!parsed)
+        return std::nullopt;
+    return Release {
+        .current = parsed->value(QLatin1String("current")).toString(),
+        .latest = parsed->value(QLatin1String("latest")).toString(),
+        .newer = parsed->value(QLatin1String("newer")).toBool(),
+        .url = parsed->value(QLatin1String("url")).toString(),
+    };
+}

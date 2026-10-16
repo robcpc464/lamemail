@@ -83,6 +83,7 @@ lamemail folder list [--json]                      the kinds of folders with the
 lamemail folder set <kind> <property> <value>      icon, dense, dim, strike, italic, indent or color for a kind
 lamemail folder reset <kind> [<property>]          back to the defaults of that kind
 lamemail commands [--json]                         every command with its usage, arguments and help
+lamemail update check [--json]                     is there a newer version (asks GitHub, downloads nothing)
 lamemail mcp                                       serve the mail to AI agents (Model Context Protocol, stdio)
 lamemail ai set claude-code                        Claude Code answers for the AI, without tools
 lamemail ai set ollama <model>                     or a model of the local ollama service
@@ -1086,6 +1087,23 @@ documentation of the command line in its settings.
 ```json
 {"command":"flag","usage":"lamemail flag <path> <change>","about":"Mark a message as seen, unseen, flagged, unflagged, answered, forwarded, junk or not junk: noted in the journal at once, on the server with the next push","arguments":[{"name":"<path>","help":"Message file, as printed by `lamemail list --json` (relative to the sync folder)"},{"name":"<change>","help":"","values":["seen","unseen","flagged","unflagged","answered","forwarded","junk","notjunk"]}]}
 ```
+
+### `update check`
+
+`lamemail update check` asks GitHub for the newest release of lamemail
+(`api.github.com`, the repository of `Cargo.toml`, a plain request with
+`User-Agent: lamemail/<version>`) and compares its number with this one;
+it downloads and changes nothing. With `--json` it prints one object: the
+`current` and the `latest` version, `newer` when the latest is newer, the
+release's `url` and its `notes` (Markdown, as GitHub shows them):
+
+```json
+{"current":"0.4.0","latest":"0.4.1","newer":true,"url":"https://github.com/robcpc464/lamemail/releases/tag/v0.4.1","notes":"- Fixes"}
+```
+
+With the development server the latest release is `<dev>/.releases/latest.json`,
+in the shape of GitHub's answer (`tag_name`, `html_url`, `body`); without
+that file the command fails.
 
 ### Development server
 

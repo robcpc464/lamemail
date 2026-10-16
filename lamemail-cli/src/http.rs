@@ -1,13 +1,19 @@
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::{ClientConnection, StreamOwned};
+
+use crate::net;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const LINE_BYTES: u64 = 8 * 1024;
 const HEADERS: usize = 100;
 const BODY_BYTES: u64 = 32 * 1024 * 1024;
+const HTTPS_PORT: u16 = 443;
+const USER_AGENT: &str = concat!("lamemail/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
@@ -23,6 +29,25 @@ pub fn post_json(address: &str, path: &str, body: &[u8], timeout: Duration) -> R
     exchange(address, "POST", path, Some(body), timeout)
 }
 
+pub fn get_secure(host: &str, path: &str, timeout: Duration) -> Result<Response> {
+    let stream = (host, HTTPS_PORT)
+        .to_socket_addrs()
+        .with_context(|| format!("resolving {host}"))?
+        .find_map(|target| TcpStream::connect_timeout(&target, timeout).ok())
+        .with_context(|| format!("connecting to {host}"))?;
+    limit(&stream, timeout)?;
+    let name = ServerName::try_from(host.to_string())
+        .with_context(|| format!("invalid host name {host}"))?;
+    let connection = ClientConnection::new(net::tls_config(), name).context("setting up TLS")?;
+    talk(
+        StreamOwned::new(connection, stream),
+        host,
+        "GET",
+        path,
+        None,
+    )
+}
+
 fn exchange(
     address: &str,
     method: &str,
@@ -33,11 +58,25 @@ fn exchange(
     let target: SocketAddr = address
         .parse()
         .with_context(|| format!("parsing the address {address}"))?;
-    let mut stream = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
+    let stream = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
         .with_context(|| format!("connecting to {address}"))?;
+    limit(&stream, timeout)?;
+    talk(stream, address, method, path, body)
+}
+
+fn limit(stream: &TcpStream, timeout: Duration) -> io::Result<()> {
     stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    send(&mut stream, address, method, path, body)
+    stream.set_write_timeout(Some(timeout))
+}
+
+fn talk(
+    mut stream: impl Read + Write,
+    host: &str,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Result<Response> {
+    send(&mut stream, host, method, path, body)
         .with_context(|| format!("sending {method} {path}"))?;
     receive(BufReader::new(stream))
         .with_context(|| format!("reading the answer to {method} {path}"))
@@ -51,7 +90,7 @@ fn send(
     body: Option<&[u8]>,
 ) -> io::Result<()> {
     let mut head = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: application/json\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {USER_AGENT}\r\nConnection: close\r\nAccept: application/json\r\n"
     );
     if let Some(body) = body {
         head += &format!(
@@ -166,8 +205,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1:11434\r\nConnection: close\r\n\
-             Accept: application/json\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+            format!(
+                "POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1:11434\r\nUser-Agent: lamemail/{}\r\n\
+                 Connection: close\r\nAccept: application/json\r\nContent-Type: application/json\r\n\
+                 Content-Length: 2\r\n\r\n{{}}",
+                env!("CARGO_PKG_VERSION")
+            )
         );
     }
 

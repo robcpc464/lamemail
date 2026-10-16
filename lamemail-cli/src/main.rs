@@ -34,6 +34,7 @@ mod sync;
 #[cfg(test)]
 mod testing;
 mod thread;
+mod update;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -269,6 +270,22 @@ enum Command {
     #[command(about = "List every command with its usage, arguments and help")]
     Commands {
         #[arg(long, help = "One JSON object per command instead of text")]
+        json: bool,
+    },
+    #[command(about = "Look for a newer version of lamemail")]
+    Update {
+        #[command(subcommand)]
+        action: UpdateCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum UpdateCommand {
+    #[command(
+        about = "Ask GitHub for the newest release and compare it with this version; nothing is downloaded"
+    )]
+    Check {
+        #[arg(long, help = "One JSON object instead of text")]
         json: bool,
     },
 }
@@ -730,6 +747,9 @@ async fn run(cli: Cli) -> Result<()> {
         },
         Command::Mcp => mcp::run(&dir, cli.dev.as_deref()),
         Command::Commands { json } => commands::run(&Cli::command(), json),
+        Command::Update {
+            action: UpdateCommand::Check { json },
+        } => update::check(cli.dev.as_deref(), json),
     }
 }
 

@@ -146,6 +146,8 @@ pub struct Texts {
     pub attachment_no_draft: &'static str,
     pub attachment_other_account: &'static str,
     pub attachment_no_runtime_dir: &'static str,
+    pub update_newest: &'static str,
+    pub update_available: &'static str,
 }
 
 const EN: Texts = Texts {
@@ -294,6 +296,8 @@ const EN: Texts = Texts {
     attachment_no_draft: "an attachment given by its index alone belongs to the --draft; name the message too, as <path>:<index>",
     attachment_other_account: "{} is a message of another account than {}",
     attachment_no_runtime_dir: "XDG_RUNTIME_DIR is not set; attachments are only kept there",
+    update_newest: "lamemail {} is the newest version",
+    update_available: "lamemail {} is out, this is {}: {}",
 };
 
 const DE: Texts = Texts {
@@ -442,6 +446,8 @@ const DE: Texts = Texts {
     attachment_no_draft: "ein Anhang nur mit seiner Nummer gehört zum --draft; nenne die Mail mit, als <pfad>:<nummer>",
     attachment_other_account: "{} ist eine Mail eines anderen Kontos als {}",
     attachment_no_runtime_dir: "XDG_RUNTIME_DIR ist nicht gesetzt; Anhänge werden nur dort abgelegt",
+    update_newest: "lamemail {} ist die neueste Version",
+    update_available: "lamemail {} ist erschienen, installiert ist {}: {}",
 };
 
 pub fn t() -> &'static Texts {

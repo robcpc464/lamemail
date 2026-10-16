@@ -10,6 +10,7 @@ View {
     id: page
     readonly property bool compact: width < 900
     property bool trayMissing: false
+    readonly property bool updateShown: Preferences.checkUpdates && Updates.newer
     readonly property list<SettingsSection> sections: [general, mailboxes, assistant, folderKinds, commandLine, info]
     readonly property string section: (sections.find((entry) => entry.key === memory.section) ?? sections[0]).key
     signal closeRequested()
@@ -192,8 +193,10 @@ View {
             anchors.leftMargin: page.compact ? 4 : 27
             anchors.rightMargin: page.compact ? 4 : 12
             anchors.bottomMargin: 14
-            text: page.compact ? Application.version : Strings.version + " " + Application.version
-            color: versionHover.hovered ? Theme.foreground : Theme.muted
+            text: page.compact ? (page.updateShown ? "→ " + Updates.latest : Application.version)
+                               : Strings.version + " " + Application.version
+                                 + (page.updateShown ? " → " + Updates.latest : "")
+            color: page.updateShown ? Theme.accent : versionHover.hovered ? Theme.foreground : Theme.muted
             Behavior on color { ColorAnimation { duration: 120 } }
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 2
@@ -301,6 +304,20 @@ View {
                             text: Preferences.notifications ? Strings.on : Strings.off
                             on: Preferences.notifications
                             onClicked: Preferences.notifications = !Preferences.notifications
+                        }
+                    }
+
+                    SettingRow {
+                        title: Strings.checkUpdates
+                        hint: Strings.checkUpdatesHint
+
+                        Pill {
+                            text: Preferences.checkUpdates ? Strings.on : Strings.off
+                            on: Preferences.checkUpdates
+                            onClicked: {
+                                Preferences.checkUpdates = !Preferences.checkUpdates
+                                Updates.check()
+                            }
                         }
                     }
 
@@ -649,6 +666,8 @@ View {
                     SettingRow {
                         title: Strings.version
                         hint: Application.version
+                              + (page.updateShown ? "  ·  " + Strings.updateAvailable.replace("{}", Updates.latest) : "")
+                        link: page.updateShown ? Updates.url : ""
                     }
 
                     SettingRow {

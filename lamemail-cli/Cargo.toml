@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.98"
 description = "Mirrors IMAP mailboxes into plain JSON text files"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/robcpc464/lamemail"
 publish = false
 
 [dependencies]

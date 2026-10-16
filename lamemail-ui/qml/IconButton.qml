@@ -10,6 +10,7 @@ Item {
     property bool spinning: false
     property bool on: false
     property bool danger: false
+    property bool dot: false
     property string tip
     readonly property alias hovered: hover.hovered
     signal clicked()
@@ -46,6 +47,16 @@ Item {
             loops: Animation.Infinite
             alwaysRunToEnd: true
         }
+    }
+
+    Rectangle {
+        visible: button.dot
+        x: glyph.x + glyph.width - width / 2
+        y: glyph.y - height / 2
+        width: 8
+        height: 8
+        radius: width / 2
+        color: Theme.accent
     }
 
     SequentialAnimation {

@@ -128,6 +128,13 @@ struct AiSetup {
     bool operator==(const AiSetup&) const = default;
 };
 
+struct Release {
+    QString current;
+    QString latest;
+    bool newer = false;
+    QString url;
+};
+
 struct ContextEntry {
     QString name;
     QString state;
@@ -221,6 +228,7 @@ std::optional<Moved> movedFromJson(const QByteArray& line, QString* error = null
 std::optional<Contact> contactFromJson(const QByteArray& line, QString* error = nullptr);
 std::optional<AiSetup> aiSetupFromJson(const QByteArray& line, QString* error = nullptr);
 std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* error = nullptr);
+std::optional<Release> releaseFromJson(const QByteArray& line, QString* error = nullptr);
 
 template <class T>
 QList<T> fromJsonLines(

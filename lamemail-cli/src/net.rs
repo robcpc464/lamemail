@@ -64,7 +64,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for KeptOpen<S> {
     }
 }
 
-fn tls_config() -> Arc<ClientConfig> {
+pub fn tls_config() -> Arc<ClientConfig> {
     static CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {

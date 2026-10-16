@@ -89,6 +89,7 @@ Rectangle {
             IconButton {
                 name: "settings"
                 tip: Strings.settingsTip
+                dot: Preferences.checkUpdates && Updates.newer
                 onClicked: bar.settingsRequested()
             }
         }

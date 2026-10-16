@@ -24,6 +24,7 @@
 #include "texts.h"
 #include "theme.h"
 #include "tray.h"
+#include "updates.h"
 #include "watcher.h"
 
 #include <QAbstractItemModelTester>
@@ -1668,6 +1669,43 @@ exit "$(cat "$dir/code")"
         QTRY_VERIFY(!ai.ready());
         QVERIFY(ai.error().isEmpty() && ai.custom() == QStringLiteral("cat"));
         QVERIFY(read(log).contains("\nai\nremove\n"));
+        answer({ });
+    }
+
+    void updatesAreAskedForOnlyWhenSwitchedOnAndOnceADay()
+    {
+        QTemporaryDir home;
+        const auto scope = ownSettings(home);
+        Preferences preferences;
+        const QString log = m_fake.filePath(QStringLiteral("log"));
+        write(log, { });
+        answer(QStringLiteral(
+            R"({"current":"%1","latest":"9.0.0","newer":true,"url":"https://example.com/r","notes":"- New"})"
+            "\n")
+                .arg(QCoreApplication::applicationVersion())
+                .toUtf8());
+        Updates updates;
+        QSignalSpy changed(&updates, &Updates::changed);
+        updates.check();
+        QTest::qWait(200);
+        QVERIFY(!read(log).contains("update"));
+        QVERIFY(!updates.newer());
+
+        preferences.setCheckUpdates(true);
+        updates.check();
+        QTRY_COMPARE(changed.count(), 1);
+        QVERIFY(updates.newer());
+        QCOMPARE(updates.latest(), QStringLiteral("9.0.0"));
+        QCOMPARE(updates.url(), QStringLiteral("https://example.com/r"));
+        QVERIFY(read(log).contains("\nupdate\ncheck\n--json\n"));
+
+        write(log, { });
+        updates.check();
+        Updates later;
+        QTest::qWait(200);
+        QVERIFY(later.newer());
+        QCOMPARE(later.latest(), QStringLiteral("9.0.0"));
+        QVERIFY(!read(log).contains("update"));
         answer({ });
     }
 
