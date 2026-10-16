@@ -56,31 +56,69 @@ QString shortLink(const QString& address)
     return address.left(kept) + QChar(ellipsis);
 }
 
+struct Anchor {
+    QString html;
+    QString shown;
+    qsizetype end;
+};
+
+QString anchor(const QString& address, const QString& shown, const QString& kind = { })
+{
+    const QString classed = kind.isEmpty() ? QString() : QStringLiteral(" class=\"%1\"").arg(kind);
+    return QStringLiteral("<a%1 href=\"%2\">%3</a>")
+        .arg(classed, address.toHtmlEscaped(), shown.toHtmlEscaped());
+}
+
+std::optional<Anchor> labelledAnchor(const QRegularExpressionMatch& match, QStringList& shortened)
+{
+    const QUrl url(match.captured(u"target"));
+    const QString where = url.scheme() == QLatin1String("mailto") ? url.path() : url.host();
+    if (!url.isValid() || where.isEmpty())
+        return std::nullopt;
+    const QString address = url.toString(QUrl::FullyEncoded);
+    shortened.append(address);
+    const QString label = match.captured(u"label")
+                              .replace(QLatin1String("\\["), QLatin1String("["))
+                              .replace(QLatin1String("\\]"), QLatin1String("]"));
+    const QString host = QStringLiteral("(%1)").arg(where);
+    return Anchor { anchor(address, label) + u' ' + anchor(address, host, QStringLiteral("host")),
+        label + u' ' + host, match.capturedEnd() };
+}
+
+std::optional<Anchor> bareAnchor(const QRegularExpressionMatch& match, QStringList& shortened)
+{
+    const QString mail = match.captured(u"mail");
+    const QString found = mail.isEmpty() ? withoutTrailingPunctuation(match.captured()) : mail;
+    const QUrl url = mail.isEmpty() ? target(found) : QUrl(QStringLiteral("mailto:") + mail);
+    if (url.isEmpty())
+        return std::nullopt;
+    const QString address = url.toString(QUrl::FullyEncoded);
+    const QString shown = mail.isEmpty() ? shortLink(found) : found;
+    if (shown != found)
+        shortened.append(address);
+    return Anchor { anchor(address, shown), shown, match.capturedStart() + found.size() };
+}
+
 QString appendLinked(LinkedText& linked, const QString& text)
 {
     static const QRegularExpression link(
         QStringLiteral(
-            R"((?<![\w.%+-])([\w.%+-]+@(?:[\w-]+\.)+[^\W\d_]{2,})|\b(?:https?://|www\.)[^\s<>"]+)"),
+            R"(\[(?<label>(?:\\[\[\]]|[^\[\]])+)\]\((?<target>(?:https?://|mailto:)[^\s()<>"]+)\))"
+            R"(|(?<![\w.%+-])(?<mail>[\w.%+-]+@(?:[\w-]+\.)+[^\W\d_]{2,}))"
+            R"(|\b(?:https?://|www\.)[^\s<>"]+)"),
         QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
     QString shownText;
     qsizetype done = 0;
     for (auto matches = link.globalMatch(text); matches.hasNext();) {
         const auto match = matches.next();
-        const QString mail = match.captured(1);
-        const QString found = mail.isEmpty() ? withoutTrailingPunctuation(match.captured()) : mail;
-        const QUrl url = mail.isEmpty() ? target(found) : QUrl(QStringLiteral("mailto:") + mail);
-        if (url.isEmpty())
+        const auto found = match.hasCaptured(u"label") ? labelledAnchor(match, linked.shortened)
+                                                       : bareAnchor(match, linked.shortened);
+        if (!found)
             continue;
-        const QString address = url.toString(QUrl::FullyEncoded);
-        const QString shown = mail.isEmpty() ? shortLink(found) : found;
-        if (shown != found)
-            linked.shortened.append(address);
         const QString before = text.mid(done, match.capturedStart() - done);
-        linked.html += before.toHtmlEscaped();
-        linked.html += QStringLiteral("<a href=\"%1\">%2</a>")
-                           .arg(address.toHtmlEscaped(), shown.toHtmlEscaped());
-        shownText += before + shown;
-        done = match.capturedStart() + found.size();
+        linked.html += before.toHtmlEscaped() + found->html;
+        shownText += before + found->shown;
+        done = found->end;
     }
     linked.html += text.mid(done).toHtmlEscaped();
     return shownText + text.mid(done);

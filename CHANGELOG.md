@@ -4,6 +4,11 @@ What changed in each version of lamemail, newest first.
 
 ## Unreleased
 
+- Links in HTML mail show their text in the accent colour, followed by
+  the site they lead to, muted (`See the collection (shop.example.com)`);
+  the pointer shows the whole address. The text of a mail holds them as
+  `[Text](url)`. Mail synced before keeps the old form until the sync
+  folder is built again.
 - "Check for updates" in the general settings (off unless switched on)
   asks GitHub once a day whether a newer version is out and then shows a
   dot on the gear and a link to the release; nothing is downloaded.

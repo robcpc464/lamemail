@@ -444,8 +444,9 @@ struct Link {
     href: String,
     name: Option<String>,
     label: Option<(usize, usize)>,
+    struck: bool,
     last_line: Option<usize>,
-    written: Option<usize>,
+    written: Option<std::ops::Range<usize>>,
     real: bool,
     image: bool,
 }
@@ -720,6 +721,7 @@ impl Converter {
                             .and_then(|name| name_of(&name))
                             .or_else(|| attribute(tag, "title").and_then(|title| name_of(&title))),
                         label: None,
+                        struck: false,
                         last_line: None,
                         written: None,
                         real: false,
@@ -942,8 +944,8 @@ impl Converter {
         let target = display(&link.href);
         match link.last_line {
             Some(line) if line < self.finished_lines => {
-                if let Some(at) = link.written {
-                    self.insert(at, &format!(" <{target}>"));
+                if let Some(written) = link.written {
+                    self.mark_written(written, &link.href);
                 }
             }
             Some(_) => self.close_link(link, &target),
@@ -955,28 +957,35 @@ impl Converter {
     fn close_link(&mut self, link: Link, target: &str) {
         let trimmed = self.line.trim_end().len().max(self.prefix_len);
         self.line.truncate(trimmed);
-        let start = match link.label {
+        let (label, struck) = match link.label {
             Some((line, start))
                 if line == self.finished_lines && self.line.is_char_boundary(start) =>
             {
-                start
+                (start, link.struck)
             }
-            _ => self.prefix_len,
+            _ => (self.prefix_len, false),
         };
-        let text = self.line[start..].trim().to_string();
-        let Some(start) = self.beside_previous(&link.href, &text, !link.real, start, target) else {
+        let text = self.line[label..].trim().to_string();
+        let Some(start) = self.beside_previous(&link.href, &text, !link.real, label) else {
             self.gap = self.gap.max(Gap::Word);
             return;
         };
-        if self.shows(start, target) {
+        let start = if self.shows(start, target) {
             self.line.truncate(start);
             self.line.push_str(target);
-            self.gap = self.gap.max(Gap::Word);
+            start
         } else if has_prefix(&link.href, MAILTO) && self.holds(start, target) {
-            self.gap = self.gap.max(Gap::Word);
+            start
+        } else if struck
+            && start == label
+            && !self.strike_open
+            && self.line[..start].ends_with(STRIKE)
+        {
+            self.mark(start - STRIKE.len(), &link.href)
         } else {
-            self.address(&format!(" <{target}>"));
-        }
+            self.mark(start, &link.href)
+        };
+        self.gap = self.gap.max(Gap::Word);
         self.previous = Some(Written {
             href: link.href,
             text,
@@ -989,7 +998,7 @@ impl Converter {
 
     fn name_link(&mut self, link: Link, target: &str) {
         let (text, shown) = match link.name {
-            Some(name) => (name.clone(), format!("{name} <{target}>")),
+            Some(name) => (name.clone(), markdown(&name, &link.href)),
             None if link.image => (String::new(), target.to_string()),
             None => return,
         };
@@ -1022,7 +1031,6 @@ impl Converter {
         text: &str,
         image_only: bool,
         start: usize,
-        target: &str,
     ) -> Option<usize> {
         let Some(previous) = self.previous.take().filter(|previous| {
             self.repeats(previous, href, text, image_only)
@@ -1031,9 +1039,9 @@ impl Converter {
         }) else {
             return Some(start);
         };
-        let address = format!(" <{target}>");
+        let address = format!("]({})", markdown_target(href));
         match (previous.image_only, image_only) {
-            (true, false) => self.cut(previous.start..start),
+            (true, false) => self.splice(previous.start..start, ""),
             (false, true) => {
                 self.line.truncate(previous.end);
                 self.previous = Some(previous);
@@ -1042,25 +1050,35 @@ impl Converter {
             (false, false)
                 if previous.href == href
                     && self.line[previous.end..start].trim().is_empty()
+                    && self.line[previous.start..previous.end].starts_with('[')
                     && self.line[previous.start..previous.end].ends_with(&address) =>
             {
-                self.cut(previous.end - address.len()..previous.end);
+                self.splice(previous.end - address.len()..previous.end, "");
+                self.splice(previous.start..previous.start + 1, "");
             }
             _ => return Some(start),
         }
         Some(previous.start)
     }
 
-    fn cut(&mut self, range: std::ops::Range<usize>) {
+    fn mark(&mut self, start: usize, href: &str) -> usize {
+        let text = self.line[start..].trim_start();
+        let start = self.line.len() - text.len();
+        let marked = markdown(text, href);
+        self.splice(start..self.line.len(), &marked);
+        start
+    }
+
+    fn splice(&mut self, range: std::ops::Range<usize>, text: &str) {
         let (start, end) = (range.start, range.end);
-        self.line.replace_range(range, "");
+        self.line.replace_range(range, text);
         for link in &mut self.links {
             if let Some((line, label)) = &mut link.label
                 && *line == self.finished_lines
                 && *label > start
             {
                 *label = if *label >= end {
-                    *label - (end - start)
+                    *label - (end - start) + text.len()
                 } else {
                     start
                 };
@@ -1094,16 +1112,23 @@ impl Converter {
         self.gap = self.gap.max(Gap::Word);
     }
 
-    fn insert(&mut self, at: usize, text: &str) {
-        self.out.insert_str(at, text);
-        if self.trailing_blank >= at {
-            self.trailing_blank += text.len();
-        }
+    fn mark_written(&mut self, written: std::ops::Range<usize>, href: &str) {
+        let Some(text) = self.out.get(written.clone()) else {
+            return;
+        };
+        let marked = markdown(text, href);
+        let (start, end) = (written.start, written.end);
+        self.out.replace_range(written, &marked);
+        let moved = |at: &mut usize| {
+            if *at >= end {
+                *at = *at - (end - start) + marked.len();
+            }
+        };
+        moved(&mut self.trailing_blank);
         for link in &mut self.links {
-            if let Some(written) = &mut link.written
-                && *written >= at
-            {
-                *written += text.len();
+            if let Some(written) = &mut link.written {
+                moved(&mut written.start);
+                moved(&mut written.end);
             }
         }
     }
@@ -1178,7 +1203,8 @@ impl Converter {
     }
 
     fn begin_visible(&mut self) {
-        if self.strikes > 0 && !self.strike_open {
+        let struck = self.strikes > 0 && !self.strike_open;
+        if struck {
             self.line.push_str(STRIKE);
             self.strike_open = true;
         }
@@ -1187,7 +1213,10 @@ impl Converter {
             .iter_mut()
             .rev()
             .take_while(|link| link.label.is_none())
-            .for_each(|link| link.label = Some(place));
+            .for_each(|link| {
+                link.label = Some(place);
+                link.struck = struck;
+            });
         if self.source != Source::Address
             && let Some(link) = self.links.last_mut()
         {
@@ -1228,14 +1257,16 @@ impl Converter {
     fn end_line(&mut self) {
         self.close_strike();
         if self.visible {
+            let text = self.line.get(self.prefix_len..).unwrap_or_default();
+            let text_start = self.line.len() - text.trim_start().len();
             let text_end = self.line.trim_end().len();
             if self.piped {
                 self.close_row();
             }
             self.separate_signature();
-            let at = self.out.len() + text_end;
+            let written = self.out.len() + text_start..self.out.len() + text_end;
             self.out.push_str(self.line.trim_end());
-            self.note_link_ends(at);
+            self.note_link_ends(written);
             self.out.push('\n');
             if self.piped {
                 self.rule();
@@ -1253,10 +1284,10 @@ impl Converter {
         self.finished_lines += 1;
     }
 
-    fn note_link_ends(&mut self, at: usize) {
+    fn note_link_ends(&mut self, written: std::ops::Range<usize>) {
         for link in &mut self.links {
             if link.last_line == Some(self.finished_lines) {
-                link.written = Some(at);
+                link.written = Some(written.clone());
             }
         }
     }
@@ -1537,6 +1568,28 @@ fn display(href: &str) -> String {
     }
 }
 
+fn markdown(text: &str, href: &str) -> String {
+    let mut marked = String::from("[");
+    let mut previous = None;
+    for c in text.chars() {
+        if matches!(c, '[' | ']') && previous != Some(ESCAPE) {
+            marked.push(ESCAPE);
+        }
+        marked.push(c);
+        previous = Some(c);
+    }
+    format!("{marked}]({})", markdown_target(href))
+}
+
+fn markdown_target(href: &str) -> String {
+    let target = if has_prefix(href, MAILTO) {
+        format!("{MAILTO}{}", display(href))
+    } else {
+        href.to_string()
+    };
+    target.replace('(', "%28").replace(')', "%29")
+}
+
 fn bare(url: &str) -> &str {
     let url = LINK_SCHEMES
         .iter()
@@ -1797,7 +1850,7 @@ mod tests {
     fn links_show_their_address() {
         assert_eq!(
             to_text("Go <a href=\"https://example.com/sale?a=1&amp;b=2\">shop now</a>, today"),
-            "Go shop now <https://example.com/sale?a=1&b=2>, today\n"
+            "Go [shop now](https://example.com/sale?a=1&b=2), today\n"
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/x\">https://example.com/x</a>"),
@@ -1805,14 +1858,14 @@ mod tests {
         );
         assert_eq!(
             to_text("<a href=\" https://example.com/f?no=XY 1234&amp;x=1 \">Flight</a>"),
-            "Flight <https://example.com/f?no=XY%201234&x=1>\n"
+            "[Flight](https://example.com/f?no=XY%201234&x=1)\n"
         );
         assert_eq!(
             to_text(
                 "<table><tr><th>Pick</th><th>Note</th></tr><tr><td>\
                      <a href=\"https://example.com/?a|b\">This</a></td><td>x</td></tr></table>"
             ),
-            "| Pick | Note |\n|---|---|\n| This <https://example.com/?a%7Cb> | x |\n"
+            "| Pick | Note |\n|---|---|\n| [This](https://example.com/?a%7Cb) | x |\n"
         );
         assert_eq!(
             to_text("<a href=\"https://www.example.com/\">example.com</a>"),
@@ -1824,7 +1877,7 @@ mod tests {
         );
         assert_eq!(
             to_text("<a href=\"mailto:news@example.com?subject=Stop\">Write us</a>"),
-            "Write us <news@example.com>\n"
+            "[Write us](mailto:news@example.com)\n"
         );
         assert_eq!(
             to_text("<a href=\"#top\">Top</a> <a href=\"tel:+49\">call</a> <a>plain</a>"),
@@ -1832,16 +1885,16 @@ mod tests {
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/a\"><div>Title</div></a>"),
-            "Title <https://example.com/a>\n"
+            "[Title](https://example.com/a)\n"
         );
         assert_eq!(to_text("x<a href=\"https://example.com/\"> </a>y"), "x y\n");
         assert_eq!(
             to_text("\u{a0}<a href=\"https://example.com/\"><td>\u{e4}</td></a>"),
-            "\u{e4} <https://example.com/>\n"
+            "[\u{e4}](https://example.com/)\n"
         );
         assert_eq!(
             to_text("\u{a0}<a href=\"https://example.com/\"><td>x</td></a>"),
-            "x <https://example.com/>\n"
+            "[x](https://example.com/)\n"
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/x\">https://example.com/x </a>"),
@@ -1853,7 +1906,7 @@ mod tests {
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/x\">shop"),
-            "shop <https://example.com/x>\n"
+            "[shop](https://example.com/x)\n"
         );
         assert_eq!(to_text("<a href=\"https://example.com/x\"><br></a>"), "");
         assert_eq!(
@@ -1869,8 +1922,30 @@ mod tests {
                  <a href=\"https://example.com/q\">Scarf, blue</a>\
                  <a href=\"https://example.com/r\">https://example.com/r</a>next."
             ),
-            "Scarf <https://example.com/p> Scarf, blue <https://example.com/q> \
+            "[Scarf](https://example.com/p) [Scarf, blue](https://example.com/q) \
              https://example.com/r next.\n"
+        );
+    }
+
+    #[test]
+    fn link_text_is_marked_as_in_markdown() {
+        assert_eq!(
+            to_text("<a href=\"https://example.com/wiki/Release_(software)\">[PDF] Release</a>"),
+            "[\\[PDF\\] Release](https://example.com/wiki/Release_%28software%29)\n"
+        );
+        assert_eq!(
+            to_text(
+                "<a href=\"https://example.com/x\">[a]</a> <a href=\"https://example.com/x\">b</a> \
+                 <a href=\"https://example.com/x\">c</a>"
+            ),
+            "[\\[a\\] b c](https://example.com/x)\n"
+        );
+        assert_eq!(
+            to_text(
+                "<s><a href=\"https://example.com/x\">old</a> price</s> \
+                 <a href=\"https://example.com/y\"><s>was</s> now</a>"
+            ),
+            "~~[old](https://example.com/x) price~~ [~~was~~ now](https://example.com/y)\n"
         );
     }
 
@@ -1881,29 +1956,29 @@ mod tests {
                 "<a href=\"https://example.com/b\"><table><tr><td>Download</td></tr></table></a>\
                  <p>Next</p>"
             ),
-            "Download <https://example.com/b>\n\nNext\n"
+            "[Download](https://example.com/b)\n\nNext\n"
         );
         assert_eq!(
             to_text(
                 "<a href=\"https://example.com/c\"><div>Name</div><div>Headline</div></a>\
                  <div>After</div>"
             ),
-            "Name\nHeadline <https://example.com/c>\nAfter\n"
+            "Name\n[Headline](https://example.com/c)\nAfter\n"
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/t\"><p>Track</p></a>after"),
-            "Track <https://example.com/t>\n\nafter\n"
+            "[Track](https://example.com/t)\n\nafter\n"
         );
         assert_eq!(
             to_text("<a href=\"https://example.com/o\"><div>One</div><div>&nbsp;</div></a>"),
-            "One <https://example.com/o>\n"
+            "[One](https://example.com/o)\n"
         );
         assert_eq!(
             to_text(
                 "<blockquote><a href=\"https://example.com/q\"><div>Quoted</div></a>\
                  <div>More</div></blockquote>"
             ),
-            "> Quoted <https://example.com/q>\n> More\n"
+            "> [Quoted](https://example.com/q)\n> More\n"
         );
     }
 
@@ -1914,27 +1989,27 @@ mod tests {
                 "<a href=\"https://example.com/n\" aria-label=\"Accept the invitation\">\
                  <table><tr><td><a href=\"https://example.com/n\">Accept</a></td></tr></table></a>"
             ),
-            "Accept <https://example.com/n>\n"
+            "[Accept](https://example.com/n)\n"
         );
         assert_eq!(
             to_text(
                 "<a href=\"https://example.com/o\">Name<table><tr><td>\
                  <a href=\"https://example.com/f\">Follow</a></td></tr></table></a>"
             ),
-            "Name <https://example.com/o>\nFollow <https://example.com/f>\n"
+            "[Name](https://example.com/o)\n[Follow](https://example.com/f)\n"
         );
         assert_eq!(
             to_text(
                 "<a href=\"https://example.com/1\">One <a href=\"https://example.com/2\">Two</a></a>"
             ),
-            "One <https://example.com/1> Two <https://example.com/2>\n"
+            "[One](https://example.com/1) [Two](https://example.com/2)\n"
         );
         assert_eq!(
             to_text(
                 "<a href=\"https://example.com/v\">Shown<div style=\"display:none\">\
                  <a href=\"https://example.com/h\">hidden</a> too</div></a>"
             ),
-            "Shown <https://example.com/v>\n"
+            "[Shown](https://example.com/v)\n"
         );
     }
 
@@ -1947,8 +2022,8 @@ mod tests {
                     <div><a href=\"https://example.com/w\"><img src=\"w.png\"></a></div>";
         assert_eq!(
             to_text(html),
-            "Text\nExample <https://example.com/x>\nOur shop <https://example.com/y>\n\
-             Zed <https://example.com/z>\nhttps://example.com/w\n"
+            "Text\n[Example](https://example.com/x)\n[Our shop](https://example.com/y)\n\
+             [Zed](https://example.com/z)\nhttps://example.com/w\n"
         );
     }
 
@@ -1959,7 +2034,7 @@ mod tests {
                 "<table><tr><td>Choose</td><td><a href=\"https://example.com/p\"><img src=\"i.png\" alt=\"Icon\"></a></td>\
                  <td><a href=\"https://example.com/p\">Book a place</a></td></tr></table>"
             ),
-            "Choose · Book a place <https://example.com/p>\n"
+            "Choose · [Book a place](https://example.com/p)\n"
         );
         assert_eq!(
             to_text(
@@ -1968,7 +2043,7 @@ mod tests {
                  <a href=\"https://example.com/r\">Help</a><a href=\"https://example.com/r\"><img src=\"b.png\"></a>\
                  <a href=\"https://example.com/s\"><img src=\"c.png\" alt=\"Shop\"></a>"
             ),
-            "Read more <https://example.com/q> Help <https://example.com/r> Shop <https://example.com/s>\n"
+            "[Read more](https://example.com/q) [Help](https://example.com/r) [Shop](https://example.com/s)\n"
         );
         assert_eq!(
             to_text(
@@ -1977,15 +2052,15 @@ mod tests {
                  <tr><td><a href=\"https://example.com/m?n=1\">More</a></td>\
                  <td><a href=\"https://example.com/m?n=2\"><img src=\"m.png\" alt=\"More\"></a></td></tr></table>"
             ),
-            "Returns <https://example.com/h?n=2>\nMore <https://example.com/m?n=1>\n"
+            "[Returns](https://example.com/h?n=2)\n[More](https://example.com/m?n=1)\n"
         );
         assert_eq!(
             to_text(
                 "<p><a href=\"https://example.com/w\">See our <a href=\"https://example.com/w\">website</a> \
                  or <a href=\"https://example.com/w\">this</a></a> · <a href=\"https://example.com/w\">FAQ</a></p>"
             ),
-            "See our website <https://example.com/w> or this <https://example.com/w> · \
-             FAQ <https://example.com/w>\n"
+            "[See our website](https://example.com/w) or [this](https://example.com/w) · \
+             [FAQ](https://example.com/w)\n"
         );
     }
 
@@ -1993,7 +2068,7 @@ mod tests {
     fn link_text_is_trimmed_and_not_repeated() {
         assert_eq!(
             to_text("<a href=\"https://example.com/s\">Shop page&nbsp;&nbsp;&nbsp;</a> next"),
-            "Shop page <https://example.com/s> next\n"
+            "[Shop page](https://example.com/s) next\n"
         );
         assert_eq!(
             to_text(
@@ -2006,7 +2081,7 @@ mod tests {
                 "<a href=\"https://example.com/a\">Home</a>·<a href=\"https://example.com/d\">Docs</a>, \
                  (<a href=\"https://example.com/e\">More</a>)."
             ),
-            "Home <https://example.com/a> ·Docs <https://example.com/d>, (More <https://example.com/e>).\n"
+            "[Home](https://example.com/a) ·[Docs](https://example.com/d), ([More](https://example.com/e)).\n"
         );
     }
 
@@ -2020,7 +2095,7 @@ mod tests {
                     <img src=\"https://track.example.com/p.gif\" width=\"1px\" height=\"1px\" alt=\"x\">";
         assert_eq!(
             to_text(html),
-            "[Photo] Example Shop <https://example.com/>\n\nhttps://example.com/fb\n"
+            "[Photo] [Example Shop](https://example.com/)\n\nhttps://example.com/fb\n"
         );
         assert_eq!(
             to_text("<p>See:</p><img src=\"cid:a\" alt=\"Screenshot 1\"><p>Bye</p>"),
@@ -2097,7 +2172,7 @@ mod tests {
                 "<s><a href=\"https://example.com/x\">https://example.com/x</a></s> \
                  <a href=\"https://example.com/y\"><s>old</s></a>"
             ),
-            "~~https://example.com/x~~ ~~old~~ <https://example.com/y>\n"
+            "~~https://example.com/x~~ [~~old~~](https://example.com/y)\n"
         );
         assert_eq!(
             to_text(

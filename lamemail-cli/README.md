@@ -1288,9 +1288,10 @@ secret-tool clear application lamemail account private
   and headings are separated by one blank line, `div`s and table rows are
   lines and the cells of a row are joined by ` · `, lists become `- ` and
   `1. ` items indented by two spaces per level, `<pre>` keeps its spaces,
-  `<blockquote>` becomes `>` lines; a link is written as `Text <url>`, or
-  as the address alone when that is its text (`mailto:` without the
-  scheme), a linked image by its alt text, an unlinked one as `[alt]`;
+  `<blockquote>` becomes `>` lines; a link is written as in Markdown,
+  `[Text](url)`, or as the address alone when that is its text (`mailto:`
+  without the scheme), a linked image by its alt text, an unlinked one as
+  `[alt]`;
   scripts, styles, hidden elements (`display:none`, `visibility:hidden`,
   `opacity:0`, a `max-height` or `max-width` of at most 1px with
   `overflow:hidden`, `hidden`), images
@@ -1298,19 +1299,22 @@ secret-tool clear application lamemail account private
   dropped; the end tag `</br>` is a line break, as in a browser, and
   whitespace and `|` inside a link's address are written as `%20`
   and `%7C`
-- a link's address follows the last line of its own text, also when the
-  link wraps blocks (buttons, cards); trailing spaces of its text are
-  dropped, and a `mailto:` link whose text holds the address writes it
-  once. A link whose text comes only from links inside it writes no
-  address, and an `<a>` opened while another is open closes that one
-  (outside a table cell), as in a browser. A link of images alone takes
-  the `aria-label` or `title` of the link, else the `title` of an image,
-  as its text; an image with an empty `alt` is decoration, so a link of
-  such images alone writes nothing, and one without any `alt` keeps its
-  bare address. An image link beside a text link with the same address
-  or the same text is left out, and two text links with the same address
-  side by side share one address. After an address, any visible
-  character but closing punctuation is set off by a space
+- in a link, `[` and `]` of its text are escaped as `\[` and `\]`, `(`
+  and `)` of its address written as `%28` and `%29`, struck text it
+  begins with stays inside (`[~~was~~ now](url)`), and a `mailto:` link
+  keeps its scheme and drops its query. A link that wraps blocks
+  (buttons, cards) marks the last line of its text; trailing spaces of
+  its text are dropped, and a `mailto:` link whose text holds the address
+  is written as that text. A link whose text comes only from links inside
+  it marks nothing of its own, and an `<a>` opened while another is
+  open closes that one (outside a table cell), as in a browser. A link of
+  images alone takes the `aria-label` or `title` of the link, else the
+  `title` of an image, as its text; an image with an empty `alt` is
+  decoration, so a link of such images alone writes nothing, and one
+  without any `alt` keeps its bare address. An image link beside a text
+  link with the same address or the same text is left out, and two text
+  links with the same address side by side become one. After a link,
+  any visible character but closing punctuation is set off by a space
 - what a mail program marks without a `<blockquote>` or a `-- ` line is
   found by its markup, never by words: the original below an Outlook
   reply (the header block Word draws a line above, `divRplyFwdMsg`, the

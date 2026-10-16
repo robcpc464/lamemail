@@ -395,6 +395,31 @@ exit "$(cat "$dir/code")"
             }));
     }
 
+    void markedLinksShowTheirTextAndHost()
+    {
+        const QString shop = QStringLiteral("https://shop.example.com/autumn?utm_source=news");
+        const LinkedText linked = linkedText(QStringLiteral(
+            "See [the \\[new\\] collection](%1) or [Write us](mailto:news@example.com)"
+            ", not [this](https://) nor [that] (https://example.com/t).")
+                .arg(shop));
+        QTextDocument document;
+        document.setHtml(linked.html);
+        QCOMPARE(document.toPlainText(),
+            QStringLiteral("See the [new] collection (shop.example.com) or Write us "
+                           "(news@example.com), not [this](https://) nor [that] "
+                           "(https://example.com/t)."));
+        QCOMPARE(anchors(document),
+            QStringList({
+                shop + QStringLiteral(" = the [new] collection"),
+                shop + QStringLiteral(" = (shop.example.com)"),
+                QStringLiteral("mailto:news@example.com = Write us"),
+                QStringLiteral("mailto:news@example.com = (news@example.com)"),
+                QStringLiteral("https://example.com/t = https://example.com/t"),
+            }));
+        QCOMPARE(
+            linked.shortened, QStringList({ shop, QStringLiteral("mailto:news@example.com") }));
+    }
+
     void longLinksAreShortenedBehindTheirHost()
     {
         const QString query = QStringLiteral("?token=") + QString(80, u'x');

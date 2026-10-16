@@ -137,7 +137,10 @@ failed.
   no further click follows (a double or triple click copies its final
   selection), a small "Copied" hint at the end of the selection says so. Web addresses in the text (`http://`, `https://`,
   `www.`, bare or as `Text <url>`) are links in the accent colour that a
-  click opens in the browser; the address always stays visible. An
+  click opens in the browser; the address always stays visible. A link
+  with a text, which the CLI writes as `[Text](url)`, shows the text in
+  the accent colour and its host muted after it, `Text (example.com)`;
+  the pointer on either shows the whole address. A bare
   address of 60 characters or more is shown shortened, its host in full
   and 50 characters in all, then `…`; the pointer on it shows the whole
   address, the click opens it, and the text of the mail keeps it. Copying

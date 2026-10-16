@@ -375,7 +375,7 @@ mod tests {
         assert_eq!(
             file.body,
             "Newsletter\n\nHello reader,\nthis is the September issue.\n\n\
-             Read more <https://example.com/more>\n"
+             [Read more](https://example.com/more)\n"
         );
     }
 

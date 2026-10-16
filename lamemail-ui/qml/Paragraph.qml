@@ -7,7 +7,8 @@ TextEdit {
     readonly property bool signature: part.kind === "signature"
     readonly property bool shortened: (part.shortened ?? []).includes(hoveredLink)
 
-    text: "<style>a { color: " + Theme.accent + "; text-decoration: none }</style>" + (part.html || "")
+    text: "<style>a { color: " + Theme.accent + "; text-decoration: none } a.host { color: "
+          + Theme.muted + " }</style>" + (part.html || "")
     readOnly: true
     selectByMouse: true
     wrapMode: TextEdit.Wrap
