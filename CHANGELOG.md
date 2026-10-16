@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.5.0
 
 - Links in HTML mail show their text in the accent colour, followed by
   the site they lead to, muted (`See the collection (shop.example.com)`);
