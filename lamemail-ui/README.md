@@ -195,6 +195,17 @@ failed.
   the next row. In the trash, `Ctrl+Delete` and a button with the trash
   icon in that bar delete the mail for good (`lamemail delete <path>`), held for
   five seconds with "Undo" as a reply is, then pushed at once.
+- Into any folder: the folder button after the moves in that bar opens the
+  folders of the mail's account above it as a tree, named as the server
+  names them (`lamemail account list --json`, read when it opens), each
+  level indented, the kind's icon where a folder has a kind, a sync icon
+  on the folders lamemail synchronizes, the mail's own folder greyed;
+  levels that are no folder of their own stand greyed between. Typing
+  filters them into a flat list of full names, `↑` `↓` choose, `Enter` or
+  a click moves (`lamemail move --json <path> /<folder>`), `Esc` closes.
+  The view goes back to the feed with the toast and its "Undo" as for
+  every move; mail moved into a folder that is not synchronized leaves the
+  feed. There is no key for it.
   A toast offers "Undo" for five seconds (a click, `Ctrl+Z`, or `Esc` in
   the feed), which moves the mail back to where it was; moves made while
   it shows join it, it counts them by target and starts its five seconds

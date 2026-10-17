@@ -26,6 +26,7 @@ class Mail : public QObject {
     Q_PROPERTY(QString account READ account NOTIFY changed)
     Q_PROPERTY(QString color READ color NOTIFY changed)
     Q_PROPERTY(QString kind READ kind NOTIFY changed)
+    Q_PROPERTY(QString folder READ folder NOTIFY changed)
     Q_PROPERTY(QString answerFrom READ answerFrom NOTIFY changed)
     Q_PROPERTY(QVariantList answerTo READ answerTo NOTIFY changed)
     Q_PROPERTY(QVariantList answerCc READ answerCc NOTIFY changed)
@@ -58,6 +59,7 @@ public:
     QString account() const { return m_shown.account; }
     QString color() const { return m_shown.color; }
     QString kind() const { return m_shown.kind; }
+    QString folder() const { return m_shown.folder; }
     QString answerFrom() const { return m_shown.answerFrom; }
     QVariantList answerTo() const { return m_shown.answerTo; }
     QVariantList answerCc() const { return m_shown.answerCc; }
@@ -91,6 +93,7 @@ private:
         QString account;
         QString color;
         QString kind;
+        QString folder;
         QString answerFrom;
         QVariantList answerTo;
         QVariantList answerCc;

@@ -68,7 +68,7 @@ pub fn run(
 fn entries(dir: &Path, search: &str, kinds: &[Kind]) -> Result<Vec<Entry>> {
     let settings = settings::load(dir)?;
     let located = locate_all(dir, &settings)?;
-    let overlay = journal::overlay(dir)?;
+    let overlay = journal::overlay(dir, &settings)?;
     let words = search_words(search);
     let found = located
         .into_iter()
@@ -368,14 +368,7 @@ mod tests {
         }
         let mut folders = assigned(&[("inbox", Kind::Inbox), ("spam", Kind::Junk)]);
         folders.get_mut("spam").unwrap().sync = false;
-        folders.insert(
-            "notes".to_string(),
-            Assigned {
-                kind: None,
-                sync: false,
-                default: false,
-            },
-        );
+        folders.insert("notes".to_string(), Assigned::default());
         let settings = private_with(folders);
         let found: Vec<(String, Option<Kind>, style::Icon)> =
             locate_account(&dir, &settings, "private")

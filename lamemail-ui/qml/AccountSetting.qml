@@ -290,9 +290,9 @@ Item {
             DefaultFolder {
                 required property var modelData
                 folder: modelData
-                current: item.kinds[modelData.kind] === modelData.name
+                current: item.kinds[modelData.kind] === modelData.path
                 enabled: !item.busy
-                onAssignRequested: (kind, sync, makeDefault) => item.accounts.assignFolder(item.name, folder.name, kind, sync, makeDefault)
+                onAssignRequested: (kind, sync, makeDefault) => item.accounts.assignFolder(item.name, folder.path, kind, sync, makeDefault)
             }
         }
 

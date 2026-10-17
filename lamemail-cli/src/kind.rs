@@ -22,13 +22,15 @@ pub enum Kind {
 
 pub const OTHER: &str = "other";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Assigned {
     #[serde(with = "or_other")]
     pub kind: Option<Kind>,
     pub sync: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub default: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -145,12 +147,15 @@ pub fn assign(folders: &mut BTreeMap<String, Assigned>, listed: &[imap::Folder])
             Some(((all, local.to_string_lossy().into_owned()), folder))
         })
         .collect();
-    let names: BTreeSet<&str> = listed.keys().map(|(_, local)| local.as_str()).collect();
+    let paths: BTreeSet<&str> = listed.keys().map(|(_, local)| local.as_str()).collect();
     let before = folders.len();
-    folders.retain(|name, _| names.contains(name.as_str()));
+    folders.retain(|path, _| paths.contains(path.as_str()));
     let mut changed = folders.len() != before;
     for ((_, local), folder) in &listed {
-        if folders.contains_key(local) {
+        let name = folder.shown().ok();
+        if let Some(assigned) = folders.get_mut(local) {
+            changed |= assigned.name != name;
+            assigned.name = name;
             continue;
         }
         let kind = detect(folder);
@@ -162,6 +167,7 @@ pub fn assign(folders: &mut BTreeMap<String, Assigned>, listed: &[imap::Folder])
                 kind,
                 sync: kind.is_some(),
                 default,
+                name,
             },
         );
         changed = true;
@@ -178,13 +184,13 @@ fn detect(folder: &imap::Folder) -> Option<Kind> {
 
 pub fn reassign(
     folders: &mut BTreeMap<String, Assigned>,
-    name: &str,
+    path: &str,
     kind: Option<Kind>,
     sync: Option<bool>,
     default: bool,
 ) -> Result<Assigned> {
-    let Some(before) = folders.get(name).copied() else {
-        bail!("{}", fill(t().folder_unknown, &[&name]));
+    let Some(before) = folders.get(path).cloned() else {
+        bail!("{}", fill(t().folder_unknown, &[&path]));
     };
     if kind.is_none() && (default || sync == Some(true)) {
         bail!("{}", t().folder_other);
@@ -194,13 +200,14 @@ pub fn reassign(
         kind,
         sync: sync.unwrap_or(if same { before.sync } else { kind.is_some() }),
         default: default || (same && before.default),
+        name: before.name,
     };
     if assigned.default {
         for other in folders.values_mut() {
             other.default &= other.kind != kind;
         }
     }
-    folders.insert(name.to_string(), assigned);
+    folders.insert(path.to_string(), assigned.clone());
     Ok(assigned)
 }
 
@@ -236,6 +243,7 @@ mod tests {
             kind,
             sync,
             default,
+            name: None,
         }
     }
 
@@ -267,6 +275,10 @@ mod tests {
                 ("papierkorb", None, false, false),
             ]
         );
+        assert_eq!(
+            folders["inbox/rechnungen"].name.as_deref(),
+            Some("INBOX/Rechnungen")
+        );
         assert!(!assign(&mut folders, &server));
     }
 
@@ -278,6 +290,9 @@ mod tests {
         folders.get_mut("notes").unwrap().kind = Some(Kind::Archive);
         assert!(!assign(&mut folders, &server));
         assert_eq!(folders["notes"].kind, Some(Kind::Archive));
+        folders.get_mut("notes").unwrap().name = None;
+        assert!(assign(&mut folders, &server));
+        assert_eq!(folders["notes"].name.as_deref(), Some("Notes"));
         assert!(assign(&mut folders, &server[..1]));
         assert_eq!(kinds(&folders), [("inbox", Some(Kind::Inbox), true, true)]);
     }
@@ -347,6 +362,9 @@ mod tests {
         assert!(reassign(&mut folders, "bin", None, Some(true), false).is_err());
         assert!(reassign(&mut folders, "bin", None, None, true).is_err());
         assert!(reassign(&mut folders, "nowhere", Some(Kind::Trash), None, false).is_err());
+        folders.get_mut("bin").unwrap().name = Some("Bin".to_string());
+        let named = reassign(&mut folders, "bin", Some(Kind::Trash), None, false).unwrap();
+        assert_eq!(named.name.as_deref(), Some("Bin"));
     }
 
     #[test]
@@ -376,6 +394,14 @@ mod tests {
         assert!(parse("bin").is_err());
         let read: Assigned = serde_json::from_str(r#"{"kind":"other","sync":false}"#).unwrap();
         assert_eq!(read, assigned(None, false, false));
+        let named = Assigned {
+            name: Some("Kunden/Müller".to_string()),
+            ..assigned(None, false, false)
+        };
+        assert_eq!(
+            serde_json::to_string(&named).unwrap(),
+            r#"{"kind":"other","sync":false,"name":"Kunden/Müller"}"#
+        );
         assert_eq!(
             serde_json::to_string(&assigned(Some(Kind::Sent), true, true)).unwrap(),
             r#"{"kind":"sent","sync":true,"default":true}"#

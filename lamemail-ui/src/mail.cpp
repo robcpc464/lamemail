@@ -202,6 +202,7 @@ Mail::Shown Mail::parse(const QByteArray& json, QString* error)
         .account = field("account").toString(),
         .color = field("color").toString(),
         .kind = field("kind").toString(),
+        .folder = field("folder").toString(),
         .answerFrom = field("answer_from").toObject().value(QLatin1String("address")).toString(),
         .answerTo = peopleOf(field("answer_to")),
         .answerCc = peopleOf(field("answer_cc")),

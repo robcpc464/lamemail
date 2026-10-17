@@ -3,6 +3,8 @@
 #include "lamemail.h"
 #include "text.h"
 
+#include <algorithm>
+
 namespace {
 
 QString lastOutputLine(const QByteArray& out)
@@ -12,6 +14,53 @@ QString lastOutputLine(const QByteArray& out)
 
 QString boolText(bool on) { return on ? QStringLiteral("true") : QStringLiteral("false"); }
 
+QStringList levels(const QVariant& folder)
+{
+    return folder.toMap().value(QStringLiteral("name")).toString().split(QLatin1Char('/'));
+}
+
+bool sameLevel(const QString& one, const QString& other)
+{
+    return one.compare(other, Qt::CaseInsensitive) == 0;
+}
+
+}
+
+QVariantList folderTree(QVariantList folders)
+{
+    std::ranges::stable_sort(folders, [](const QVariant& one, const QVariant& other) {
+        return std::ranges::lexicographical_compare(
+            levels(one), levels(other), [](const QString& a, const QString& b) {
+                return a.compare(b, Qt::CaseInsensitive) < 0;
+            });
+    });
+    QVariantList rows;
+    QStringList open;
+    for (const QVariant& item : folders) {
+        const QStringList folderLevels = levels(item);
+        const qsizetype depth = folderLevels.size() - 1;
+        qsizetype shared = 0;
+        while (shared < open.size() && shared < depth
+            && sameLevel(open.at(shared), folderLevels.at(shared)))
+            ++shared;
+        for (qsizetype level = shared; level < depth; ++level)
+            rows.append(QVariantMap {
+                { QStringLiteral("path"), QString() },
+                { QStringLiteral("name"), folderLevels.first(level + 1).join(QLatin1Char('/')) },
+                { QStringLiteral("label"), folderLevels.at(level) },
+                { QStringLiteral("depth"), int(level) },
+                { QStringLiteral("kind"), QString() },
+                { QStringLiteral("sync"), false },
+                { QStringLiteral("selectable"), false },
+            });
+        QVariantMap folder = item.toMap();
+        folder.insert(QStringLiteral("label"), folderLevels.last());
+        folder.insert(QStringLiteral("depth"), int(depth));
+        folder.insert(QStringLiteral("selectable"), true);
+        rows.append(folder);
+        open = folderLevels;
+    }
+    return rows;
 }
 
 int Accounts::rowCount(const QModelIndex& parent) const
@@ -95,12 +144,12 @@ QStringList Accounts::ids() const
     return ids;
 }
 
-QVariantMap Accounts::byId(QString Account::* field) const
+QVariantMap Accounts::trees() const
 {
-    QVariantMap values;
+    QVariantMap trees;
     for (const Account& row : m_rows)
-        values.insert(row.id, row.*field);
-    return values;
+        trees.insert(row.id, folderTree(row.folders));
+    return trees;
 }
 
 void Accounts::reload()

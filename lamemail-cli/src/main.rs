@@ -212,7 +212,7 @@ enum Command {
         )]
         path: PathBuf,
         #[arg(
-            help = "Synchronized local folder path of the account, or inbox, archive, trash or junk for the account's default folder of that kind; archive goes into the folder of the mail's year below it while the account archives by year"
+            help = "Local folder path of the account, or inbox, archive, trash or junk for the account's default folder of that kind; archive goes into the folder of the mail's year below it while the account archives by year; mail moved into a folder that is not synchronized leaves lamemail"
         )]
         folder: String,
         #[arg(long, help = "One JSON object instead of text")]

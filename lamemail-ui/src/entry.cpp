@@ -51,7 +51,9 @@ QVariantList assignedFolders(const QJsonObject& folders)
     for (auto folder = folders.begin(); folder != folders.end(); ++folder) {
         const QJsonObject assigned = folder.value().toObject();
         list.append(QVariantMap {
-            { QStringLiteral("name"), folder.key() },
+            { QStringLiteral("path"), folder.key() },
+            { QStringLiteral("name"),
+                assigned.value(QLatin1String("name")).toString(folder.key()) },
             { QStringLiteral("kind"), assigned.value(QLatin1String("kind")).toString() },
             { QStringLiteral("sync"), assigned.value(QLatin1String("sync")).toBool() },
         });

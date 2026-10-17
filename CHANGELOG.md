@@ -2,6 +2,15 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- A mail can be moved into any folder of its account: the new folder
+  button under the mail opens the folders as a tree with a search, and the
+  folders lamemail synchronizes carry the sync icon. Mail moved into a
+  folder that is not synchronized leaves lamemail. `lamemail move` takes
+  every folder as well, and `lamemail account list --json` names each
+  folder as the server writes it.
+
 ## 0.5.0
 
 - Links in HTML mail show their text in the accent colour, followed by

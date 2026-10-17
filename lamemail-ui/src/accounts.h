@@ -12,6 +12,8 @@
 #include <QtQml/qqmlregistration.h>
 #include <functional>
 
+QVariantList folderTree(QVariantList folders);
+
 class Accounts : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
@@ -21,6 +23,7 @@ class Accounts : public QAbstractListModel {
     Q_PROPERTY(QVariantMap colors READ colors NOTIFY changed)
     Q_PROPERTY(QVariantMap senders READ senders NOTIFY changed)
     Q_PROPERTY(QVariantMap signatures READ signatures NOTIFY changed)
+    Q_PROPERTY(QVariantMap trees READ trees NOTIFY changed)
 
 public:
     enum Role {
@@ -55,6 +58,7 @@ public:
     QVariantMap colors() const { return byId(&Account::color); }
     QVariantMap senders() const { return byId(&Account::from); }
     QVariantMap signatures() const { return byId(&Account::signature); }
+    QVariantMap trees() const;
 
     Q_INVOKABLE void reload();
     Q_INVOKABLE void add(const QString& id, const QString& host, const QString& port,
@@ -89,7 +93,14 @@ private:
         QString text;
     };
 
-    QVariantMap byId(QString Account::* field) const;
+    template <typename T> QVariantMap byId(T Account::* field) const
+    {
+        QVariantMap values;
+        for (const Account& row : m_rows)
+            values.insert(row.id, row.*field);
+        return values;
+    }
+
     void act(const QString& id, const QStringList& command, const QByteArray& input,
         bool reloadAfter, std::function<void(bool ok, const QString& line)> done = { });
     void setStatus(const QString& id, const Status& status);

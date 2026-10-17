@@ -17,6 +17,7 @@ const YEAR_FOLDER: Assigned = Assigned {
     kind: Some(Kind::Archive),
     sync: true,
     default: false,
+    name: None,
 };
 
 #[derive(Debug, Serialize)]
@@ -39,8 +40,8 @@ impl Placed {
         let located = list::locate_one(dir, settings, path)?;
         store::read_flags(&located.file)?;
         let state = store::state_of(&located.file)?;
-        let overlay = journal::overlay(dir)?;
-        if overlay.hides(&located.path) {
+        let overlay = journal::overlay(dir, settings)?;
+        if overlay.discards(&located.path) {
             bail!(
                 "{}",
                 fill(t().show_not_message, &[&path.display(), &dir.display()])
@@ -147,13 +148,18 @@ fn year_folder(account: &Account, target: &str, time: &str) -> Option<String> {
 
 fn assign_year_folder(dir: &Path, settings: &mut Settings, id: &str, folder: &str) -> Result<()> {
     let folders = &mut settings.account_mut(id)?.folders;
-    if folders
-        .get(folder)
-        .is_some_and(|assigned| assigned.kind == Some(Kind::Archive))
-    {
+    let before = folders.get(folder);
+    if before.is_some_and(|assigned| assigned.kind == Some(Kind::Archive)) {
         return Ok(());
     }
-    folders.insert(folder.to_string(), YEAR_FOLDER);
+    let name = before.and_then(|assigned| assigned.name.clone());
+    folders.insert(
+        folder.to_string(),
+        Assigned {
+            name,
+            ..YEAR_FOLDER
+        },
+    );
     settings::save(dir, settings)
 }
 
@@ -162,7 +168,7 @@ fn resolve(account: &Account, target: &str) -> Option<String> {
         Some(kind) => Kinds::of(account).folder(kind)?.to_string(),
         None => folder_name::normalize(target),
     };
-    account.synced_kind(&folder).is_some().then_some(folder)
+    account.folders.contains_key(&folder).then_some(folder)
 }
 
 #[cfg(test)]
@@ -191,7 +197,7 @@ mod tests {
         assert_eq!(find("archive").as_deref(), Some("[gmail]/all mail"));
         assert_eq!(find("junk"), None);
         assert_eq!(find("/Papierkorb").as_deref(), Some("papierkorb"));
-        assert_eq!(find("bin"), None);
+        assert_eq!(find("bin").as_deref(), Some("bin"));
         assert_eq!(find("nowhere"), None);
         assert!(missing("private", "junk").contains("lamemail account folder"));
     }
@@ -207,14 +213,9 @@ mod tests {
         assert_eq!(year(&account, "inbox"), None);
         assert_eq!(year(&account, "archive/2024"), None);
         assert_eq!(year_folder(&account, "archive", "x"), None);
-        account.folders.insert(
-            "archive/2025".to_string(),
-            Assigned {
-                kind: None,
-                sync: false,
-                default: false,
-            },
-        );
+        account
+            .folders
+            .insert("archive/2025".to_string(), Assigned::default());
         assert_eq!(year(&account, "archive").as_deref(), Some("archive/2025"));
         account.folders.get_mut("archive/2025").unwrap().kind = Some(Kind::Archive);
         assert_eq!(year(&account, "archive"), None);
@@ -294,6 +295,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mail_moved_into_a_folder_that_is_not_synchronized_leaves_lamemail() {
+        let fixture = Fixture::new("moving-away");
+        let dir = &fixture.dir;
+        let customer = fixture.folder("Kunden/Müller");
+        fixture.sync().await;
+        let settings = fixture.settings();
+        let account = settings.account("private").unwrap();
+        assert_eq!(
+            account.folders["kunden/müller"].name.as_deref(),
+            Some("Kunden/Müller")
+        );
+        assert_eq!(account.synced_kind("kunden/müller"), None);
+        let inbox = store::index(&dir.join("private/inbox")).unwrap();
+        let path = store::relative(&inbox[&1], dir);
+        let shown = |path: &str| show::open(dir, &settings, Path::new(path)).is_ok();
+
+        run(dir, Path::new(&path), "/Kunden/Müller", false).unwrap();
+        assert!(!shown(&path));
+        run(dir, Path::new(&path), "/inbox", false).unwrap();
+        assert!(shown(&path));
+        run(dir, Path::new(&path), "kunden/müller", false).unwrap();
+        fs::remove_dir_all(&customer).unwrap();
+        let pushed = fixture.push().await;
+        assert_eq!((pushed.pushed, pushed.dropped.len()), (0, 1));
+        assert!(shown(&path));
+
+        run(dir, Path::new(&path), "kunden/müller", false).unwrap();
+        fixture.folder("Kunden/Müller");
+        let pushed = fixture.push().await;
+        assert_eq!((pushed.pushed, pushed.dropped.len()), (1, 0));
+        assert!(customer.join("1,S.eml").is_file());
+        assert!(!inbox[&1].exists());
+        assert!(!dir.join("private/kunden").exists());
+        assert!(run(dir, Path::new(&path), "nowhere", false).is_err());
+        fs::remove_dir_all(&fixture.base).unwrap();
+    }
+
+    #[tokio::test]
     async fn only_mail_in_the_trash_is_deleted_for_good_with_the_next_push() {
         let fixture = Fixture::new("moving-delete");
         let dir = &fixture.dir;
@@ -313,7 +352,7 @@ mod tests {
 
         assert!(delete(dir, Path::new(&kept)).is_err());
         delete(dir, Path::new(&old)).unwrap();
-        assert!(journal::overlay(dir).unwrap().hides(&old));
+        assert!(journal::overlay(dir, &settings).unwrap().hides(&old));
         assert!(delete(dir, Path::new(&old)).is_err());
         assert!(run(dir, Path::new(&old), "inbox", false).is_err());
         run(dir, Path::new(&kept), "trash", false).unwrap();

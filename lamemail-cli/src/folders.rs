@@ -41,7 +41,7 @@ pub fn run(dir: &Path, json: bool) -> Result<()> {
 }
 
 fn rows(dir: &Path, settings: &Settings) -> Result<Vec<Row>> {
-    let overlay = journal::overlay(dir)?;
+    let overlay = journal::overlay(dir, settings)?;
     let mut rows: BTreeMap<Kind, Row> = Kind::value_variants()
         .iter()
         .map(|kind| (*kind, Row::new(*kind, settings)))

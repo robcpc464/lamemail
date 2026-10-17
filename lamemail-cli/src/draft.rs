@@ -640,14 +640,14 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        let overlay = journal::overlay(dir).unwrap();
+        let settings = settings::load(dir).unwrap();
+        let overlay = journal::overlay(dir, &settings).unwrap();
         let file = store::index(&dir.join("private/drafts")).unwrap()[&1].clone();
         let path = store::relative(&file, dir);
         assert!(overlay.hides(&path));
-        let settings = settings::load(dir).unwrap();
         assert!(crate::show::open(dir, &settings, Path::new(&path)).is_err());
         crate::flag::run(dir, Path::new(&path), crate::flag::Change::Seen).unwrap();
-        assert!(journal::overlay(dir).unwrap().hides(&path));
+        assert!(journal::overlay(dir, &settings).unwrap().hides(&path));
         let pushed = fixture.push().await;
         assert_eq!((pushed.pushed, pushed.dropped.len()), (1, 0));
         assert!(!drafts.join("1,SD.eml").exists());

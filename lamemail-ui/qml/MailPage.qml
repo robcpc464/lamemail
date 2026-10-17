@@ -52,6 +52,10 @@ View {
         onFailed: (message) => page.failed(message)
     }
 
+    Accounts {
+        id: accounts
+    }
+
     function loaded() {
         return mail.answerSubject.length > 0
     }
@@ -208,8 +212,10 @@ View {
     }
 
     onActiveChanged: {
-        if (!active)
+        if (!active) {
+            folderMenu.close()
             return
+        }
         if (page.stale)
             mail.reload()
         page.stale = false
@@ -455,6 +461,24 @@ View {
                         danger: modelData === "trash"
                         tip: ({ archive: Strings.archiveTip, trash: Strings.trashTip, inbox: Strings.inboxTip })[modelData]
                         onClicked: page.moveRequested(mail.path, modelData)
+                    }
+                }
+
+                IconButton {
+                    name: "folderMove"
+                    on: folderMenu.opened
+                    tip: folderMenu.opened ? "" : Strings.folderTip
+                    onClicked: {
+                        accounts.reload()
+                        folderMenu.open()
+                    }
+
+                    FolderMenu {
+                        id: folderMenu
+                        y: -height - 6
+                        tree: accounts.trees[mail.account] ?? []
+                        current: mail.folder
+                        onChosen: (path) => page.moveRequested(mail.path, "/" + path)
                     }
                 }
 

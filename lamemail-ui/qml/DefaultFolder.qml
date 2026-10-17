@@ -32,7 +32,7 @@ Item {
             anchors.right: controls.left
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
-            text: row.folder.name
+            text: row.folder.path
             color: row.other || !row.folder.sync ? Theme.muted : Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize

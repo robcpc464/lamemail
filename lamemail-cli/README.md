@@ -267,7 +267,7 @@ password: `stored`, `missing`, `unused` with the development server, or
 listing goes on):
 
 ```json
-{"id":"private","host":"imap.gmail.com","port":993,"username":"me@example.com","smtp":{"host":"smtp.gmail.com","port":465,"copy_to_sent":false},"color":"green","signature":"Me\nexample.com","archive_by_year":false,"folders":{"inbox":{"kind":"inbox","sync":true,"default":true},"[gmail]/all mail":{"kind":"archive","sync":true,"default":true},"[gmail]/important":{"kind":"other","sync":false}},"from":{"name":"Me","address":"me@example.com"},"password":"stored","kinds":{"inbox":"inbox","sent":null,"drafts":null,"junk":null,"trash":null,"archive":"[gmail]/all mail"}}
+{"id":"private","host":"imap.gmail.com","port":993,"username":"me@example.com","smtp":{"host":"smtp.gmail.com","port":465,"copy_to_sent":false},"color":"green","signature":"Me\nexample.com","archive_by_year":false,"folders":{"inbox":{"kind":"inbox","sync":true,"default":true,"name":"INBOX"},"[gmail]/all mail":{"kind":"archive","sync":true,"default":true,"name":"[Gmail]/All Mail"},"[gmail]/important":{"kind":"other","sync":false,"name":"[Gmail]/Important"}},"from":{"name":"Me","address":"me@example.com"},"password":"stored","kinds":{"inbox":"inbox","sent":null,"drafts":null,"junk":null,"trash":null,"archive":"[gmail]/all mail"}}
 ```
 
 `smtp` is missing when no SMTP server is set, `signature` when the account
@@ -715,11 +715,15 @@ mail.
 
 `lamemail move <path> <folder>` notes in the journal that the message goes
 into another folder of its account: a local folder path, as `list --json`
-prints `folder`, or `inbox`, `archive`, `trash` or `junk` for the account's
-default folder of that kind; a leading `/` always names a local folder
-(`/archive` is the folder `archive`, never the archive kind). The target
-must be synchronized; an account without one ends with exit code 1 and
-says how to assign one.
+prints `folder` and `account list --json` lists it in `folders`, or
+`inbox`, `archive`, `trash` or `junk` for the account's default folder of
+that kind; a leading `/` always names a local folder (`/archive` is the
+folder `archive`, never the archive kind). Any folder of the account is a
+target; a folder it does not have, or a kind without a synchronized
+folder, ends with exit code 1 (for a kind saying how to assign one). A
+message moved into a folder that is not synchronized leaves lamemail:
+`list`, `show`, `thread` and `folder list` leave it out at once, as a
+deleted one, and the push moves it without fetching anything there.
 
 `archive` goes one level deeper while the account archives by year
 (`lamemail account archive <id> --by-year <bool>`; on unless set, off for
@@ -743,8 +747,8 @@ A newer move of the same message replaces the older one, so moving it ten
 times leaves one entry; a move back to where it lies drops the entry, so
 nothing waits for the push (an undo in a UI). The move and its `junk`
 or `notjunk` are noted in one journal edit, and a discarded draft cannot be
-moved. Until the push, `list`, `show` and `thread` show the message in the
-target folder with the target's style (see "Folder styles"). The push reads the target's `UIDNEXT`, moves
+moved. Until the push, `list`, `show` and `thread` show the message in a
+synchronized target folder with the target's style (see "Folder styles"). The push reads the target's `UIDNEXT`, moves
 all messages for one target with one `UID MOVE` (the flags go first, the
 move keeps them), removes their files from the source and fetches the
 target's messages from that `UIDNEXT` on. A target without a local
@@ -753,10 +757,11 @@ when no selectable folder has its path, a folder of a year is created by
 `CREATE` below its parent, with the parent's delimiter, and subscribed
 (`SUBSCRIBE`, so clients that show subscribed folders only see it; a
 refusal is ignored); its `.folder.json` is written before the move. A
-target without a local folder that the settings do not synchronize, one
-whose parent is not on the server or has no delimiter, and one the
-server refuses to create drop the move with the reason, and the message
-stays where it is. A move into a folder of the kind
+target the settings do not synchronize is looked up the same way and
+only moved into, without a local folder. Any other target missing on
+the server, a folder of a year whose parent is not on the server or has
+no delimiter, and one the server refuses to create drop the move with
+the reason, and the message stays where it is. A move into a folder of the kind
 `junk` notes `junk` as well, a move out of one `notjunk`, so filters on
 the server learn from it; both count from where the message is on the
 server, so moving it back before the push (an undo) is no verdict and
@@ -800,6 +805,11 @@ Only folders with a kind and `sync` are synchronized and found (`list`,
 the local copy of a folder that is not is removed by the next complete
 sync. The folder of a kind is its synchronized default, else the first
 synchronized one by path; `account list --json` names it in `kinds`.
+`name` is the folder's name as the server writes it, decoded, its levels
+joined by `/` (`INBOX/Kunden`), for a UI to show; every sync renews it,
+and it is absent until a sync or `account add` saw the folder. Mail can be
+moved into every folder of an account, also one that is not synchronized
+(see `move`).
 
 A folder is assigned once, when `account add` or a sync first sees it,
 or when `move` archives into the archive's folder of a year (see `move`):
@@ -1186,8 +1196,8 @@ and neither does a folder that is not synchronized.
     "private":  { "host": "imap.example.com", "port": 993, "username": "me@example.com",
                   "smtp": { "host": "smtp.example.com", "port": 465, "copy_to_sent": true },
                   "color": "green", "signature": "Me\nexample.com",
-                  "folders": { "inbox": { "kind": "inbox", "sync": true, "default": true },
-                               "notes": { "kind": "other", "sync": false } } },
+                  "folders": { "inbox": { "kind": "inbox", "sync": true, "default": true, "name": "INBOX" },
+                               "notes": { "kind": "other", "sync": false, "name": "Notes" } } },
     "business": { "host": "imap.example.com", "port": 993, "username": "work@example.com",
                   "context_folder": "/home/me/context/business", "archive_by_year": false }
   },

@@ -53,24 +53,27 @@ fn decode_shifted(encoded: &str) -> Option<String> {
 }
 
 pub fn local_path(imap_name: &str, delimiter: Option<&str>) -> Result<PathBuf> {
+    Ok(PathBuf::from(shown(imap_name, delimiter)?.to_lowercase()))
+}
+
+pub fn shown(imap_name: &str, delimiter: Option<&str>) -> Result<String> {
     let decoded = decode_utf7(imap_name);
     let segments: Vec<&str> = match delimiter.filter(|d| !d.is_empty()) {
         Some(delimiter) => decoded.split(delimiter).collect(),
         None => vec![decoded.as_str()],
     };
-    let mut path = PathBuf::new();
+    let mut levels = Vec::with_capacity(segments.len());
     for segment in segments {
         let segment: String = segment
-            .to_lowercase()
             .chars()
             .map(|c| if c == '/' || c == '\0' { '_' } else { c })
             .collect();
         if segment.is_empty() || segment == "." || segment == ".." {
             bail!("folder name `{imap_name}` cannot be stored as a path");
         }
-        path.push(segment);
+        levels.push(segment);
     }
-    Ok(path)
+    Ok(levels.join("/"))
 }
 
 pub fn normalize(name: &str) -> String {
@@ -126,5 +129,16 @@ mod tests {
         );
         assert!(local_path("..", Some("/")).is_err());
         assert!(local_path("a//b", Some("/")).is_err());
+    }
+
+    #[test]
+    fn a_folder_is_shown_by_its_decoded_name_with_slashes_between_its_levels() {
+        assert_eq!(
+            shown("INBOX.Kunden.M&APw-ller &- S&APY-hne", Some(".")).unwrap(),
+            "INBOX/Kunden/Müller & Söhne"
+        );
+        assert_eq!(shown("Entw&APw-rfe", Some("/")).unwrap(), "Entwürfe");
+        assert_eq!(shown("Flat/Name", None).unwrap(), "Flat_Name");
+        assert!(shown("a//b", Some("/")).is_err());
     }
 }

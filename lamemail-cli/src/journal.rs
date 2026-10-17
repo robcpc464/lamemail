@@ -14,7 +14,7 @@ use crate::list::Located;
 use crate::message::{Flags, MailFile};
 use crate::net::Refused;
 use crate::send::{self, Sent};
-use crate::server::{self, Next, Server};
+use crate::server::{self, Server};
 use crate::settings::Settings;
 use crate::store::FolderState;
 use crate::{draft, folder_name, output, settings, show, store, sync};
@@ -143,6 +143,7 @@ pub struct Overlay {
     changes: HashMap<String, Vec<Change>>,
     moves: HashMap<String, String>,
     discarded: HashSet<String>,
+    leaving: HashSet<String>,
 }
 
 impl Overlay {
@@ -164,17 +165,25 @@ impl Overlay {
         self.moves.get(path).map(String::as_str)
     }
 
-    pub fn hides(&self, path: &str) -> bool {
+    pub fn discards(&self, path: &str) -> bool {
         self.discarded.contains(path)
+    }
+
+    pub fn hides(&self, path: &str) -> bool {
+        self.discards(path) || self.leaving.contains(path)
     }
 }
 
-pub fn overlay(dir: &Path) -> Result<Overlay> {
+pub fn overlay(dir: &Path, settings: &Settings) -> Result<Overlay> {
     let mut overlay = Overlay::default();
     for entry in read(dir)?.entries {
+        let account = settings.accounts.get(entry.account());
         match entry.action {
             Action::Flag { change } => overlay.changes.entry(entry.path).or_default().push(change),
             Action::Move { folder } => {
+                if !account.is_some_and(|account| account.synced_kind(&folder).is_some()) {
+                    overlay.leaving.insert(entry.path.clone());
+                }
                 overlay.moves.insert(entry.path, folder);
             }
             Action::Discard => {
@@ -550,13 +559,13 @@ impl FolderPush<'_> {
             let target_dir = account_dir.join(target);
             let uids: Vec<u32> = items.iter().map(|(_, uid)| *uid).collect();
             let moved = async {
-                let (target_state, next) = self.target(server, target, &target_dir).await?;
-                server.move_to(&uids, &target_state.imap_name).await?;
-                Ok::<_, anyhow::Error>((target_state, next))
+                let found = self.target(server, target, &target_dir).await?;
+                server.move_to(&uids, &found.imap_name).await?;
+                Ok::<_, anyhow::Error>(found)
             }
             .await;
-            let (target_state, next) = match moved {
-                Ok(moved) => moved,
+            let found = match moved {
+                Ok(found) => found,
                 Err(err) if err.is::<Refused>() => {
                     let reason = format!("{err:#}");
                     outcome
@@ -570,8 +579,8 @@ impl FolderPush<'_> {
                 remove_file(&self.dir.join(&entry.path))?;
                 outcome.pushed.push(entry.id);
             }
-            if next.uid_validity == target_state.uidvalidity {
-                arriving.push((target_dir, target_state.imap_name, next.uid));
+            if let Some(first) = found.first_new {
+                arriving.push((target_dir, found.imap_name, first));
             }
         }
         for (target_dir, imap_name, first) in arriving {
@@ -580,19 +589,15 @@ impl FolderPush<'_> {
         Ok(())
     }
 
-    async fn target(
-        &self,
-        server: &mut Server,
-        target: &str,
-        target_dir: &Path,
-    ) -> Result<(FolderState, Next)> {
-        if let Some(state) = store::read_state(target_dir)? {
-            let next = server.next_uid(&state.imap_name).await?;
-            return Ok((state, next));
-        }
+    async fn target(&self, server: &mut Server, target: &str, target_dir: &Path) -> Result<Target> {
         let settings = settings::load(self.dir)?;
-        if settings.account(self.id)?.synced_kind(target).is_none() {
-            bail!(Refused(t().push_no_target.to_string()));
+        let mirrored = settings.account(self.id)?.synced_kind(target).is_some();
+        if mirrored && let Some(state) = store::read_state(target_dir)? {
+            let next = server.next_uid(&state.imap_name).await?;
+            return Ok(Target {
+                first_new: (next.uid_validity == state.uidvalidity).then_some(next.uid),
+                imap_name: state.imap_name,
+            });
         }
         let listed = server.list_folders().await?;
         let found = listed
@@ -600,6 +605,7 @@ impl FolderPush<'_> {
             .find(|folder| folder.selectable && folder.is_at(target));
         let imap_name = match found {
             Some(folder) => folder.name.clone(),
+            None if !mirrored => bail!(Refused(t().push_no_target.to_string())),
             None => {
                 let name = year_name(&listed, target)
                     .ok_or_else(|| Refused(fill(t().push_cannot_create, &[&target])))?;
@@ -612,17 +618,33 @@ impl FolderPush<'_> {
                 name
             }
         };
+        if !mirrored {
+            return Ok(Target {
+                imap_name,
+                first_new: None,
+            });
+        }
         let next = server.next_uid(&imap_name).await?;
         fs::create_dir_all(target_dir)
             .with_context(|| format!("creating {}", target_dir.display()))?;
-        let state = FolderState {
+        store::write_state(
+            target_dir,
+            &FolderState {
+                imap_name: imap_name.clone(),
+                uidvalidity: next.uid_validity,
+                last_sync: None,
+            },
+        )?;
+        Ok(Target {
             imap_name,
-            uidvalidity: next.uid_validity,
-            last_sync: None,
-        };
-        store::write_state(target_dir, &state)?;
-        Ok((state, next))
+            first_new: Some(next.uid),
+        })
     }
+}
+
+struct Target {
+    imap_name: String,
+    first_new: Option<u32>,
 }
 
 fn year_name(listed: &[Folder], target: &str) -> Option<String> {
@@ -839,7 +861,7 @@ mod tests {
             seen: true,
             ..Flags::default()
         };
-        overlay(dir)
+        overlay(dir, &Settings::default())
             .unwrap()
             .apply("private/inbox/a-1.json", &mut flags);
         assert!(flags.flagged && !flags.seen);
@@ -939,8 +961,9 @@ mod tests {
         flag::run(dir, Path::new(&one), Change::Flagged).unwrap();
         moving::run(dir, Path::new(&two), "trash", false).unwrap();
         moving::run(dir, Path::new(&two), "inbox", false).unwrap();
-        assert_eq!(overlay(dir).unwrap().folder_of(&one), Some("trash"));
-        assert_eq!(overlay(dir).unwrap().folder_of(&two), None);
+        let overlay = overlay(dir, &fixture.settings()).unwrap();
+        assert_eq!(overlay.folder_of(&one), Some("trash"));
+        assert_eq!(overlay.folder_of(&two), None);
         assert_eq!(read(dir).unwrap().entries.len(), 2);
 
         let pushed = fixture.push().await;

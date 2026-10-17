@@ -86,6 +86,10 @@ impl Fixture {
         settings::load(&self.dir).unwrap()
     }
 
+    pub fn folder(&self, name: &str) -> PathBuf {
+        dev_folder(&self.dev, name, None)
+    }
+
     pub fn marked_folder(&self, name: &str, special: &str) -> PathBuf {
         dev_folder(&self.dev, name, Some(special))
     }
@@ -110,7 +114,7 @@ pub fn assigned(kinds: &[(&str, Kind)]) -> BTreeMap<String, Assigned> {
                 Assigned {
                     kind: Some(*kind),
                     sync: true,
-                    default: false,
+                    ..Assigned::default()
                 },
             )
         })

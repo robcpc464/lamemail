@@ -113,7 +113,7 @@ fn parent(dir: &Path, settings: &Settings, message: &Message) -> Result<Option<S
     let (Some(Kind::Drafts), Some(wanted)) = (message.kind, message.in_reply_to.as_deref()) else {
         return Ok(None);
     };
-    let overlay = journal::overlay(dir)?;
+    let overlay = journal::overlay(dir, settings)?;
     Ok(list::locate_account(dir, settings, &message.account)?
         .into_iter()
         .filter(|located| !overlay.hides(&located.path))
@@ -131,7 +131,7 @@ fn parent(dir: &Path, settings: &Settings, message: &Message) -> Result<Option<S
 
 pub fn open(dir: &Path, settings: &Settings, path: &Path) -> Result<(Message, Identities)> {
     let mut located = list::locate_one(dir, settings, path)?;
-    let overlay = journal::overlay(dir)?;
+    let overlay = journal::overlay(dir, settings)?;
     if overlay.hides(&located.path) {
         bail!(
             "{}",
@@ -186,7 +186,7 @@ pub fn read_account(
     settings: &Settings,
     id: &str,
 ) -> Result<(Mails, BTreeSet<String>)> {
-    let overlay = journal::overlay(dir)?;
+    let overlay = journal::overlay(dir, settings)?;
     let read: Mails = list::locate_account(dir, settings, id)?
         .into_iter()
         .filter_map(|mut located| {

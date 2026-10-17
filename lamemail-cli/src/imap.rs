@@ -64,6 +64,10 @@ impl Folder {
         folder_name::local_path(&self.name, self.delimiter.as_deref())
     }
 
+    pub fn shown(&self) -> Result<String> {
+        folder_name::shown(&self.name, self.delimiter.as_deref())
+    }
+
     pub fn is_at(&self, local: &str) -> bool {
         self.local_path()
             .is_ok_and(|path| path.to_string_lossy() == local)

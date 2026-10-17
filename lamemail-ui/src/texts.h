@@ -108,6 +108,7 @@ struct Texts {
     const char* archived;
     const char* trashed;
     const char* movedToInbox;
+    const char* moved;
     const char* current;
     const char* lastSyncTip;
     const char* closingAfterSend;
@@ -121,6 +122,8 @@ struct Texts {
     const char* addressPlaceholder;
     const char* searchMail;
     const char* searchContacts;
+    const char* searchFolders;
+    const char* noFolder;
     const char* noContacts;
     const char* noMatch;
     const char* pickHint;
@@ -234,6 +237,7 @@ struct Texts {
     const char* archiveTip;
     const char* trashTip;
     const char* inboxTip;
+    const char* folderTip;
     const char* deleteTip;
     std::array<const char*, 7> icons;
     std::array<const char*, 4> flags;
@@ -389,6 +393,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString archiveTip READ archiveTip CONSTANT)
     Q_PROPERTY(QString trashTip READ trashTip CONSTANT)
     Q_PROPERTY(QString inboxTip READ inboxTip CONSTANT)
+    Q_PROPERTY(QString folderTip READ folderTip CONSTANT)
     Q_PROPERTY(QString deleteTip READ deleteTip CONSTANT)
     Q_PROPERTY(QString quote READ quote CONSTANT)
     Q_PROPERTY(QString to READ to CONSTANT)
@@ -440,6 +445,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString archived READ archived CONSTANT)
     Q_PROPERTY(QString trashed READ trashed CONSTANT)
     Q_PROPERTY(QString movedToInbox READ movedToInbox CONSTANT)
+    Q_PROPERTY(QString moved READ moved CONSTANT)
     Q_PROPERTY(QString current READ current CONSTANT)
     Q_PROPERTY(QString lastSyncTip READ lastSyncTip CONSTANT)
     Q_PROPERTY(QString closingAfterSend READ closingAfterSend CONSTANT)
@@ -453,6 +459,8 @@ class Strings : public QObject {
     Q_PROPERTY(QString addressPlaceholder READ addressPlaceholder CONSTANT)
     Q_PROPERTY(QString searchMail READ searchMail CONSTANT)
     Q_PROPERTY(QString searchContacts READ searchContacts CONSTANT)
+    Q_PROPERTY(QString searchFolders READ searchFolders CONSTANT)
+    Q_PROPERTY(QString noFolder READ noFolder CONSTANT)
     Q_PROPERTY(QString noContacts READ noContacts CONSTANT)
     Q_PROPERTY(QString noMatch READ noMatch CONSTANT)
     Q_PROPERTY(QString pickHint READ pickHint CONSTANT)
@@ -592,6 +600,7 @@ public:
     QString archiveTip() const { return QString::fromUtf8(texts().archiveTip); }
     QString trashTip() const { return QString::fromUtf8(texts().trashTip); }
     QString inboxTip() const { return QString::fromUtf8(texts().inboxTip); }
+    QString folderTip() const { return QString::fromUtf8(texts().folderTip); }
     QString deleteTip() const { return QString::fromUtf8(texts().deleteTip); }
     QString quote() const { return QString::fromUtf8(texts().quote); }
     QString to() const { return QString::fromUtf8(texts().to); }
@@ -644,6 +653,7 @@ public:
     QString archived() const { return QString::fromUtf8(texts().archived); }
     QString trashed() const { return QString::fromUtf8(texts().trashed); }
     QString movedToInbox() const { return QString::fromUtf8(texts().movedToInbox); }
+    QString moved() const { return QString::fromUtf8(texts().moved); }
     QString current() const { return QString::fromUtf8(texts().current); }
     QString lastSyncTip() const { return QString::fromUtf8(texts().lastSyncTip); }
     QString closingAfterSend() const { return QString::fromUtf8(texts().closingAfterSend); }
@@ -657,6 +667,8 @@ public:
     QString addressPlaceholder() const { return QString::fromUtf8(texts().addressPlaceholder); }
     QString searchMail() const { return QString::fromUtf8(texts().searchMail); }
     QString searchContacts() const { return QString::fromUtf8(texts().searchContacts); }
+    QString searchFolders() const { return QString::fromUtf8(texts().searchFolders); }
+    QString noFolder() const { return QString::fromUtf8(texts().noFolder); }
     QString noContacts() const { return QString::fromUtf8(texts().noContacts); }
     QString noMatch() const { return QString::fromUtf8(texts().noMatch); }
     QString pickHint() const { return QString::fromUtf8(texts().pickHint); }

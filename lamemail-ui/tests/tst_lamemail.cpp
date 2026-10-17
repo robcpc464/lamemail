@@ -1908,12 +1908,45 @@ exit "$(cat "$dir/code")"
         answer({ });
     }
 
+    void theFolderTreeNestsByServerNamesWithTheMissingLevelsBetween()
+    {
+        const auto folder = [](const char* path, const char* name, bool sync) {
+            return QVariantMap { { QStringLiteral("path"), QString::fromUtf8(path) },
+                { QStringLiteral("name"), QString::fromUtf8(name) },
+                { QStringLiteral("kind"), QStringLiteral("other") },
+                { QStringLiteral("sync"), sync } };
+        };
+        const QVariantList rows = folderTree({ folder("kunden-alt", "Kunden-Alt", false),
+            folder("inbox", "INBOX", true), folder("[gmail]/all mail", "[Gmail]/All Mail", true),
+            folder("kunden/müller", "Kunden/Müller", false), folder("archiv", "archiv", false),
+            folder("kunden/bauer", "Kunden/Bauer", false) });
+        QStringList shown;
+        for (const QVariant& row : rows) {
+            const QVariantMap map = row.toMap();
+            shown.append(QString(map.value(QStringLiteral("depth")).toInt() * 2, QLatin1Char(' '))
+                + map.value(QStringLiteral("label")).toString()
+                + (map.value(QStringLiteral("selectable")).toBool() ? QString()
+                                                                    : QStringLiteral(" -")));
+        }
+        QCOMPARE(shown,
+            QStringList({ QStringLiteral("[Gmail] -"), QStringLiteral("  All Mail"),
+                QStringLiteral("archiv"), QStringLiteral("INBOX"), QStringLiteral("Kunden -"),
+                QStringLiteral("  Bauer"), QStringLiteral("  Müller"),
+                QStringLiteral("Kunden-Alt") }));
+        const QVariantMap parent = rows.at(4).toMap();
+        QCOMPARE(parent.value(QStringLiteral("name")), QVariant(QStringLiteral("Kunden")));
+        QVERIFY(parent.value(QStringLiteral("path")).toString().isEmpty());
+        const QVariantMap muller = rows.at(6).toMap();
+        QCOMPARE(muller.value(QStringLiteral("path")), QVariant(QStringLiteral("kunden/müller")));
+        QCOMPARE(muller.value(QStringLiteral("name")), QVariant(QStringLiteral("Kunden/Müller")));
+    }
+
     void accountsListAddAndReportPerAccount()
     {
         Accounts accounts;
         QAbstractItemModelTester tester(&accounts);
         const QByteArray list
-            = R"({"id":"private","host":"imap.example.com","port":993,"username":"me@example.com","smtp":{"host":"smtp.example.com","port":465,"copy_to_sent":false},"color":"green","signature":"Me\nexample.com","archive_by_year":true,"from":{"name":"Me","address":"me@example.com"},"password":"missing","kinds":{"inbox":"inbox","archive":null,"trash":"bin"},"folders":{"inbox":{"kind":"inbox","sync":true,"default":true},"notes":{"kind":"other","sync":false}}})"
+            = R"({"id":"private","host":"imap.example.com","port":993,"username":"me@example.com","smtp":{"host":"smtp.example.com","port":465,"copy_to_sent":false},"color":"green","signature":"Me\nexample.com","archive_by_year":true,"from":{"name":"Me","address":"me@example.com"},"password":"missing","kinds":{"inbox":"inbox","archive":null,"trash":"bin"},"folders":{"inbox":{"kind":"inbox","sync":true,"default":true,"name":"INBOX"},"notes":{"kind":"other","sync":false}}})"
               "\n"
               R"({"id":"work","host":"imap.example.com","port":993,"username":"work@example.com","smtp":null,"password":"stored"})"
               "\n";
@@ -1938,10 +1971,12 @@ exit "$(cat "$dir/code")"
         const QVariantList folders = accounts.data(first, Accounts::FoldersRole).toList();
         QCOMPARE(folders.size(), 2);
         const QVariantMap inbox = folders.first().toMap();
-        QCOMPARE(inbox.value(QStringLiteral("name")), QVariant(QStringLiteral("inbox")));
+        QCOMPARE(inbox.value(QStringLiteral("path")), QVariant(QStringLiteral("inbox")));
+        QCOMPARE(inbox.value(QStringLiteral("name")), QVariant(QStringLiteral("INBOX")));
         QCOMPARE(inbox.value(QStringLiteral("kind")), QVariant(QStringLiteral("inbox")));
         QVERIFY(inbox.value(QStringLiteral("sync")).toBool());
         const QVariantMap notes = folders.last().toMap();
+        QCOMPARE(notes.value(QStringLiteral("name")), QVariant(QStringLiteral("notes")));
         QCOMPARE(notes.value(QStringLiteral("kind")), QVariant(QStringLiteral("other")));
         QVERIFY(!notes.value(QStringLiteral("sync")).toBool());
         QVERIFY(accounts.data(accounts.index(1), Accounts::SmtpHostRole).toString().isEmpty());

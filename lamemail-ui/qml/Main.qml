@@ -159,7 +159,8 @@ Window {
     function offerUndoMove(path, from, folder, target) {
         const origin = root.undoMoves.find(move => move.path === path)?.folder ?? from
         const others = root.undoMoves.filter(move => move.path !== path)
-        root.undoMoves = folder === origin ? others : others.concat([{ path: path, folder: origin, target: target }])
+        const shown = target.startsWith("/") ? "folder" : target
+        root.undoMoves = folder === origin ? others : others.concat([{ path: path, folder: origin, target: shown }])
         if (root.undoMoves.length === 0) {
             toast.dismiss()
             root.settleMoves()
@@ -168,7 +169,7 @@ Window {
         undoWindow.restart()
         const single = root.undoMoves.length === 1 ? root.undoMoves[0].target : ""
         const counts = root.undoMoves.reduce((all, move) => Object.assign(all, { [move.target]: (all[move.target] ?? 0) + 1 }), {})
-        const done = ({ archive: Strings.archived, trash: Strings.trashed, inbox: Strings.movedToInbox })[single]
+        const done = ({ archive: Strings.archived, trash: Strings.trashed, inbox: Strings.movedToInbox, folder: Strings.moved })[single]
         toast.show({
             icon: single,
             text: done ? root.named(done, root.undoMoves[0].path) : "",
