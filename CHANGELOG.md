@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.6.0
 
 - A mail can be moved into any folder of its account: the new folder
   button under the mail opens the folders as a tree with a search, and the
