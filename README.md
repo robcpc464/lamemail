@@ -37,9 +37,9 @@
 - **Live inbox.** New mail shows up the moment it arrives, with a desktop
   notification.
 - **No HTML.** Every mail is plain text. Tracking pixels and remote
-  images never load, and links show their real address.
-- **Keyboard driven.** Every action sits on a `Ctrl` shortcut, so a stray
-  keypress never archives anything.
+  images never load, and links show where they lead.
+- **Keyboard driven.** Actions sit on `Ctrl` shortcuts, never on a single
+  key, so a stray keypress never archives anything.
 - **Private.** Passwords live in the system keyring. Nothing goes to an
   AI unless you ask.
 - **Native.** Rust and Qt 6. No web view, no Electron.
@@ -81,14 +81,39 @@ $ lamemail move private/inbox/2026-10-01_1920-weekend-119.json archive
 $ lamemail push
 ```
 
-The [CLI README](lamemail-cli/README.md) documents every command, the
-file format and the JSON output.
+The [CLI README](lamemail-cli/README.md) lists every command,
+[`FORMAT.md`](lamemail-cli/FORMAT.md) documents the file format and the
+JSON output.
 
 ## The UI
 
-![A message with the reply box next to it and an instruction for the AI](screenshots/reply.png)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/reply.png" alt="A message with the reply box next to it and an instruction for the AI"><br>
+      <sub>The reply sits beside the mail; <code>/ai</code> and an instruction let the AI write it.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/search.png" alt="Searching the feed"><br>
+      <sub>Search covers all synchronized mail, whatever the feed shows.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/compose.png" alt="New mail with the contacts on the left and the composer on the right"><br>
+      <sub>New mail starts from your contacts: a click adds To, <code>Ctrl</code>+click adds Cc.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/settings.png" alt="The feed settings with icon, colour and style for each kind of folder"><br>
+      <sub>Each kind of folder has its own icon, colour and look in the feed.</sub>
+    </td>
+  </tr>
+</table>
 
-![Searching the feed](screenshots/search.png)
+<p>
+  <img src="screenshots/omarchy-themes.png" alt="The feed in five Omarchy themes, side by side"><br>
+  <sub>lamemail follows your Omarchy theme live: Flexoki Light, Ristretto, Catppuccin Latte, Osaka Jade and Retro-82.</sub>
+</p>
 
 | Key | |
 |---|---|
@@ -98,13 +123,15 @@ file format and the JSON output.
 | `Ctrl+Enter` | send |
 | `Ctrl+S` | save the draft to the server |
 | `Ctrl+E` | archive, or move back to the inbox |
-| `Ctrl+Delete` | move to trash |
+| `Ctrl+Delete` | move to trash, in the trash delete for good |
 | `Ctrl+U`, `Ctrl+D` | mark read or unread, star |
 | `Ctrl+Z` | undo, while the toast is counting down |
 | `Ctrl+R` | sync now |
 | `Ctrl+,` | settings |
+| `Ctrl+Q` | quit |
 
-The [UI README](lamemail-ui/README.md) covers everything in detail.
+The [UI README](lamemail-ui/README.md) says how to build it and where it
+keeps its files.
 
 ## The AI
 
@@ -136,9 +163,47 @@ not supported yet, so accounts that insist on it won't work.
 
 ## Install
 
+All three ways need a Secret Service keyring with `secret-tool` (package
+`libsecret`), which keeps the passwords.
+
+### Install script
+
+On any x86_64 Linux with Qt 6.11 or newer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/robcpc464/lamemail/master/install.sh | sh
+```
+
+It puts `lamemail` and `lamemail-ui` into `~/.local/bin` and adds the menu
+entry and icon. Run the same line again to update, or end it with
+`sh -s -- --uninstall` to remove lamemail. With an older Qt the command
+line still works, and the script says what is missing.
+
+### AppImage
+
+For distributions with an older Qt, such as Ubuntu, there is an AppImage
+that brings its own Qt. Started as it is, it is the UI:
+
+```sh
+curl -fLO https://github.com/robcpc464/lamemail/releases/latest/download/lamemail-x86_64.AppImage
+chmod +x lamemail-x86_64.AppImage
+./lamemail-x86_64.AppImage
+```
+
+The command line is the same image, called as `lamemail`:
+
+```sh
+ln -s "$PWD/lamemail-x86_64.AppImage" ~/.local/bin/lamemail
+lamemail --help
+```
+
+The link points to where the image lies, so set it again after moving the
+image.
+
+### From source
+
 You'll need Qt 6.9 or newer (on Arch: `qt6-base qt6-declarative
-qt6-wayland qt6-svg`), `base-devel`, `curl`, and a Secret Service keyring
-with `secret-tool` (package `libsecret`).
+qt6-wayland qt6-svg`), `base-devel` and `curl`.
 
 ```sh
 git clone https://github.com/robcpc464/lamemail
@@ -156,9 +221,10 @@ lamemail init
 lamemail-ui
 ```
 
-Open the settings (`Ctrl+,`) and add an account: a short name, your IMAP
-server, login, password and SMTP server. The first sync starts right
-away. Prefer the terminal?
+With the AppImage, the image itself is `lamemail-ui`. Open the settings
+(`Ctrl+,`) and add an account: a short name, your IMAP server, login,
+password and SMTP server. The first sync starts right away. Prefer the
+terminal?
 
 ```sh
 lamemail account add private --host imap.example.com --user me@example.com --smtp-host smtp.example.com
