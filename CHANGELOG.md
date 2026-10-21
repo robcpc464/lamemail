@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.7.0
 
 - `/ai` (`/ki` in German) works in a new mail too. The AI gets the
   account's context folder, the earlier mails with the recipients and the
