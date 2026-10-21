@@ -194,13 +194,13 @@ Item {
             model: Styles.colors
 
             Swatch {
-                id: shade
+                id: swatch
                 required property string modelData
                 colorName: modelData
                 chosen: modelData === item.color
                 onClicked: {
                     item.picking = ""
-                    item.model().set(item.kind, "color", shade.modelData)
+                    item.model().set(item.kind, "color", swatch.modelData)
                 }
             }
         }

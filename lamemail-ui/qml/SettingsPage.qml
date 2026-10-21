@@ -34,7 +34,7 @@ View {
     }
 
     Accounts {
-        id: accounts
+        id: accountModel
         onAddFinished: (ok, name, message) => {
             if (!ok)
                 return
@@ -54,7 +54,7 @@ View {
         id: contextDialog
         property string account
         title: Strings.contextChoose
-        onAccepted: accounts.setContextFolder(contextDialog.account, selectedFolder)
+        onAccepted: accountModel.setContextFolder(contextDialog.account, selectedFolder)
     }
 
     function takeFocusBack() {
@@ -66,7 +66,7 @@ View {
         if (active && section === folderKinds.key)
             folders.reload()
         if (active && (section === mailboxes.key || section === assistant.key))
-            accounts.reload()
+            accountModel.reload()
     }
 
     function load() {
@@ -370,21 +370,21 @@ View {
             icon: "user"
             title: Strings.accountsSection
             hint: Strings.accountsHint
-            error: accounts.error
+            error: accountModel.error
             active: page.section === key
 
             ListView {
                 id: accountList
                 anchors.fill: parent
-                model: accounts
+                model: accountModel
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 delegate: AccountSetting {
-                    accounts: accounts
+                    accounts: accountModel
                     onClosed: page.takeFocusBack()
                 }
                 footer: NewAccount {
-                    accounts: accounts
+                    accounts: accountModel
                     onClosed: page.takeFocusBack()
                 }
                 ScrollBar.vertical: SlimScrollBar {}
@@ -534,7 +534,7 @@ View {
                     }
 
                     Repeater {
-                        model: accounts
+                        model: accountModel
 
                         SettingRow {
                             id: contextRow
@@ -560,7 +560,7 @@ View {
                                 Pill {
                                     visible: contextRow.chosen
                                     text: Strings.remove
-                                    onClicked: accounts.setContextFolder(contextRow.name, "")
+                                    onClicked: accountModel.setContextFolder(contextRow.name, "")
                                 }
                             }
                         }

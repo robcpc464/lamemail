@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import Lamemail
 
 Menu {
-    id: menu
+    id: textMenu
 
     required property var editor
     readonly property bool editable: !editor.readOnly
@@ -25,28 +25,28 @@ Menu {
     TextMenuItem {
         key: "X"
         text: Strings.menuCut
-        enabled: menu.editable && menu.selected
-        onTriggered: menu.editor.cut()
+        enabled: textMenu.editable && textMenu.selected
+        onTriggered: textMenu.editor.cut()
     }
 
     TextMenuItem {
         key: "C"
         text: Strings.menuCopy
-        enabled: menu.selected
-        onTriggered: menu.editor.copy()
+        enabled: textMenu.selected
+        onTriggered: textMenu.editor.copy()
     }
 
     TextMenuItem {
         key: "V"
         text: Strings.menuPaste
-        enabled: menu.editable && menu.editor.canPaste
-        onTriggered: menu.editor.paste()
+        enabled: textMenu.editable && textMenu.editor.canPaste
+        onTriggered: textMenu.editor.paste()
     }
 
     TextMenuItem {
         key: "A"
         text: Strings.menuSelectAll
-        enabled: menu.editor.length > 0
-        onTriggered: menu.editor.selectAll()
+        enabled: textMenu.editor.length > 0
+        onTriggered: textMenu.editor.selectAll()
     }
 }
