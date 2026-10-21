@@ -476,45 +476,55 @@ enum AiCommand {
         chars: usize,
     },
     #[command(
-        about = "Draft or revise the text of a reply to a message with the AI that is set: the instruction comes from stdin, the whole text goes to stdout; nothing is noted or sent"
+        about = "Draft or revise the text of a new mail or a reply with the AI that is set: the instruction comes from stdin, the whole text goes to stdout; nothing is noted or sent"
     )]
     Suggest {
         #[arg(
-            help = "Message file, as printed by `lamemail list --json` (relative to the sync folder)"
+            required_unless_present = "reply",
+            conflicts_with = "reply",
+            help = "Account id of a new mail"
         )]
-        path: PathBuf,
+        id: Option<String>,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Message file to answer, as printed by `lamemail list --json` (relative to the sync folder)"
+        )]
+        reply: Option<PathBuf>,
         #[arg(
             long,
             value_name = "ADDRESS",
-            help = "Who the reply goes to, `address` or `Name <address>`, repeated for more (default: answer_to of show --json)"
+            help = "Who the mail goes to, `address` or `Name <address>`, repeated for more (a reply's default: answer_to of show --json)"
         )]
         to: Vec<String>,
         #[arg(
             long,
             value_name = "ADDRESS",
-            help = "Who gets a copy of the reply, repeated for more"
+            help = "Who gets a copy of the mail, repeated for more"
         )]
         cc: Vec<String>,
+        #[arg(long, value_name = "TEXT", help = "The subject of the mail")]
+        subject: Option<String>,
         #[arg(
             long,
             value_name = "TEXT",
-            help = "The text of the reply begun so far, up to the place of the instruction; with it or --after the AI revises the reply and answers with all of it"
+            help = "The text of the mail begun so far, up to the place of the instruction; with it or --after the AI revises the mail and answers with all of it"
         )]
         before: Option<String>,
         #[arg(
             long,
             value_name = "TEXT",
-            help = "The text of the reply begun so far, from the place of the instruction on; a quote and a signature at its end stay as they are, the AI never sees them"
+            help = "The text of the mail begun so far, from the place of the instruction on; a quote and a signature at its end stay as they are, the AI never sees them"
         )]
         after: Option<String>,
         #[arg(
             long,
-            help = "Never ask back: write the reply now, with a placeholder in square brackets for a fact still missing"
+            help = "Never ask back: write the mail now, with a placeholder in square brackets for a fact still missing"
         )]
         no_questions: bool,
         #[arg(
             long,
-            help = "One JSON object with the path and the text instead of the text"
+            help = "One JSON object with the account, the path and the text instead of the text"
         )]
         json: bool,
     },
@@ -725,25 +735,31 @@ async fn run(cli: Cli) -> Result<()> {
             AiCommand::Remove => ai::remove(&dir),
             AiCommand::ContextLimit { chars } => ai::set_context_limit(&dir, chars),
             AiCommand::Suggest {
-                path,
+                id,
+                reply,
                 to,
                 cc,
+                subject,
                 before,
                 after,
                 no_questions,
                 json,
-            } => suggest::run(
-                &dir,
-                &path,
-                &suggest::Request {
+            } => {
+                let target = match (&reply, &id) {
+                    (Some(path), _) => suggest::Target::Reply(path),
+                    (None, Some(id)) => suggest::Target::New(id),
+                    (None, None) => bail!("an account id or --reply is needed"),
+                };
+                let request = suggest::Request {
                     to,
                     cc,
+                    subject: subject.unwrap_or_default(),
                     before: before.unwrap_or_default(),
                     after: after.unwrap_or_default(),
                     no_questions,
-                },
-                json,
-            ),
+                };
+                suggest::run(&dir, &target, &request, json)
+            }
         },
         Command::Mcp => mcp::run(&dir, cli.dev.as_deref()),
         Command::Commands { json } => commands::run(&Cli::command(), json),

@@ -147,7 +147,7 @@ struct UsedMail {
 };
 
 struct Suggestion {
-    QString path;
+    QString account;
     QString text;
     QString question;
     std::optional<QList<ContextEntry>> context;

@@ -1614,17 +1614,18 @@ exit "$(cat "$dir/code")"
         const AiProgram& claude = set->programs.last();
         QVERIFY(!claude.found && !claude.running && claude.ollama.isEmpty());
         QVERIFY(!aiSetupFromJson("[]"));
-        const auto suggestion
-            = suggestionFromJson(R"({"path":"work/inbox/a-1.json","text":"Hi Jane"})");
+        const auto suggestion = suggestionFromJson(
+            R"({"account":"work","path":"work/inbox/a-1.json","text":"Hi Jane"})");
+        QCOMPARE(suggestion->account, QStringLiteral("work"));
         QCOMPARE(suggestion->text, QStringLiteral("Hi Jane"));
-        QVERIFY(!suggestionFromJson(R"({"path":"work/inbox/a-1.json"})"));
-        const auto question
-            = suggestionFromJson(R"({"path":"work/inbox/a-1.json","question":"Who instead?"})");
+        QVERIFY(!suggestionFromJson(R"({"account":"work","path":"work/inbox/a-1.json"})"));
+        QVERIFY(!suggestionFromJson(R"({"path":"work/inbox/a-1.json","text":"Hi Jane"})"));
+        const auto question = suggestionFromJson(R"({"account":"work","question":"Who instead?"})");
         QCOMPARE(question->question, QStringLiteral("Who instead?"));
         QVERIFY(question->text.isEmpty());
         QVERIFY(!question->context);
         const auto read = suggestionFromJson(
-            R"({"path":"a","text":"Hi","context":[{"name":"rates.md","state":"cut"}],)"
+            R"({"account":"work","text":"Hi","context":[{"name":"rates.md","state":"cut"}],)"
             R"("searches":["weekend"],"found":[{"path":"p","subject":"S","date":"d"}],"earlier":[]})");
         QCOMPARE(read->searches, QStringList { QStringLiteral("weekend") });
         QCOMPARE(read->found.first().subject, QStringLiteral("S"));
@@ -1782,16 +1783,25 @@ exit "$(cat "$dir/code")"
             (QStringList { QStringLiteral("—  ·  x"), QStringLiteral("Project  ·  y") }));
     }
 
-    void suggesterDraftsAReplyAndStopsWhenCancelled()
+    void suggesterDraftsAReplyOrANewMailAndStopsWhenCancelled()
     {
         Suggester suggester;
         QSignalSpy suggested(&suggester, &Suggester::suggested);
         QSignalSpy failed(&suggester, &Suggester::failed);
         QSignalSpy reported(&suggester, &Suggester::reported);
-        answer(R"({"path":"work/inbox/a-1.json","text":"Hallo Jane,\n\ngern."})"
+        answer(R"({"account":"work","path":"work/inbox/a-1.json","text":"Hallo Jane,\n\ngern."})"
                "\n");
-        suggester.suggest(QStringLiteral("work/inbox/a-1.json"), QStringLiteral("Sage zu"),
-            { QStringLiteral("Jane <jane@example.com>") }, { QStringLiteral("tom@example.com") });
+        const QVariantMap reply { { QStringLiteral("account"), QStringLiteral("work") },
+            { QStringLiteral("reply"), QStringLiteral("work/inbox/a-1.json") } };
+        const auto with = [&reply](const QVariantMap& more) {
+            QVariantMap request = reply;
+            request.insert(more);
+            return request;
+        };
+        suggester.suggest(with({ { QStringLiteral("instruction"), QStringLiteral("Sage zu") },
+            { QStringLiteral("to"), QStringList { QStringLiteral("Jane <jane@example.com>") } },
+            { QStringLiteral("cc"), QStringList { QStringLiteral("tom@example.com") } },
+            { QStringLiteral("subject"), QStringLiteral("Re: Angebot") } }));
         QVERIFY(suggester.running());
         QTRY_COMPARE(suggested.count(), 1);
         QVERIFY(!suggester.running());
@@ -1801,35 +1811,37 @@ exit "$(cat "$dir/code")"
         QCOMPARE(read(m_fake.filePath(QStringLiteral("args"))),
             "--dir\n" + lamemail::dir().toUtf8()
                 + "\nai\nsuggest\n--json\n--to=Jane <jane@example.com>\n--cc=tom@example.com\n"
-                  "--before=\n--after=\n--\nwork/inbox/a-1.json\n");
+                  "--subject=Re: Angebot\n--before=\n--after=\n--reply=work/inbox/a-1.json\n");
 
-        suggester.suggest(QStringLiteral("work/inbox/a-1.json"), QStringLiteral("Urlaub"), { }, { },
-            QStringLiteral("Hallo Jane,\n\n"), QStringLiteral("\n\nRobin"));
+        suggester.suggest({ { QStringLiteral("account"), QStringLiteral("work") },
+            { QStringLiteral("instruction"), QStringLiteral("Urlaub") },
+            { QStringLiteral("before"), QStringLiteral("Hallo Jane,\n\n") },
+            { QStringLiteral("after"), QStringLiteral("\n\nRobin") } });
         QTRY_COMPARE(suggested.count(), 2);
         QCOMPARE(read(m_fake.filePath(QStringLiteral("args"))),
             "--dir\n" + lamemail::dir().toUtf8()
-                + "\nai\nsuggest\n--json\n--before=Hallo Jane,\n\n\n--after=\n\nRobin\n--\n"
-                  "work/inbox/a-1.json\n");
+                + "\nai\nsuggest\n--json\n--subject=\n--before=Hallo Jane,\n\n\n"
+                  "--after=\n\nRobin\n--\nwork\n");
 
         QSignalSpy asked(&suggester, &Suggester::asked);
-        answer(R"({"path":"work/inbox/a-1.json","question":"Wen statt dir?"})"
+        answer(R"({"account":"work","path":"work/inbox/a-1.json","question":"Wen statt dir?"})"
                "\n");
-        suggester.suggest(QStringLiteral("work/inbox/a-1.json"), QStringLiteral("Absagen, Tom"),
-            { }, { }, { }, { }, true);
+        suggester.suggest(with({ { QStringLiteral("instruction"), QStringLiteral("Absagen, Tom") },
+            { QStringLiteral("written"), true } }));
         QTRY_COMPARE(asked.count(), 1);
         QCOMPARE(asked.first().first().toString(), QStringLiteral("Wen statt dir?"));
         QCOMPARE(suggested.count(), 2);
         QVERIFY(read(m_fake.filePath(QStringLiteral("args"))).contains("--no-questions\n"));
 
         answer({ }, 1, "lamemail: no AI is set up\n");
-        suggester.suggest(QStringLiteral("work/inbox/a-1.json"), { }, { }, { });
+        suggester.suggest(reply);
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.first().first().toString(), QStringLiteral("no AI is set up"));
 
         const QString pause = m_fake.filePath(QStringLiteral("sleep-ai"));
         write(pause, "30");
         auto removePause = qScopeGuard([&] { QFile::remove(pause); });
-        suggester.suggest(QStringLiteral("work/inbox/a-1.json"), { }, { }, { });
+        suggester.suggest(reply);
         QTest::qWait(200);
         suggester.cancel();
         QVERIFY(!suggester.running());

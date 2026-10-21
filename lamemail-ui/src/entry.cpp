@@ -355,7 +355,7 @@ std::optional<AiSetup> aiSetupFromJson(const QByteArray& line, QString* error)
 
 std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* error)
 {
-    const auto parsed = object(line, "path", error);
+    const auto parsed = object(line, "account", error);
     if (!parsed)
         return std::nullopt;
     const QJsonValue question = parsed->value(QLatin1String("question"));
@@ -383,7 +383,7 @@ std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* er
     for (const QJsonValue search : parsed->value(QLatin1String("searches")).toArray())
         searches.append(search.toString());
     return Suggestion {
-        .path = parsed->value(QLatin1String("path")).toString(),
+        .account = parsed->value(QLatin1String("account")).toString(),
         .text = parsed->value(QLatin1String("text")).toString(),
         .question = question.toString(),
         .context = context,

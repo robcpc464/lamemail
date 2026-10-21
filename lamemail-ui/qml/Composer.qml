@@ -35,9 +35,8 @@ Item {
         if (quote.length > 0)
             commands.push({ name: Strings.quoteCommand, label: Strings.quoteCommandHint, icon: "quote", text: quote, fold: true,
                             enabled: true })
-        commands.push({ name: Strings.aiCommand, icon: "sparkles", prompt: true, enabled: Ai.ready && replyTo.length > 0,
-                        label: !Ai.ready ? Strings.aiCommandOff : replyTo.length > 0 ? Strings.aiCommandHint
-                                                                                     : Strings.aiCommandReplyOnly })
+        commands.push({ name: Strings.aiCommand, icon: "sparkles", prompt: true, enabled: Ai.ready,
+                        label: Ai.ready ? Strings.aiCommandHint : Strings.aiCommandOff })
         commands.push({ name: Strings.signatureCommand, icon: "signature", text: "-- \n" + signature, line: true,
                         enabled: signature.length > 0,
                         label: signature.length > 0 ? Strings.signatureCommandHint : Strings.noSignature })
@@ -188,10 +187,17 @@ Item {
 
     function run(written) {
         const exchange = composer.exchange
-        suggester.suggest(composer.replyTo, [exchange.instruction].concat(exchange.answers).join("\n"),
-                          composer.addresses("to"), composer.addresses("cc"),
-                          field.text.slice(0, composer.place.from), field.text.slice(composer.place.to),
-                          written || exchange.asked >= composer.questionLimit)
+        suggester.suggest({
+            account: composer.account,
+            reply: composer.replyTo,
+            instruction: [exchange.instruction].concat(exchange.answers).join("\n"),
+            to: composer.addresses("to"),
+            cc: composer.addresses("cc"),
+            subject: composer.subject,
+            before: field.text.slice(0, composer.place.from),
+            after: field.text.slice(composer.place.to),
+            written: written || exchange.asked >= composer.questionLimit
+        })
     }
 
     function takeQuestion(question) {

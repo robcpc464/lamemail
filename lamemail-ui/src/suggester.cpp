@@ -26,21 +26,27 @@ Suggester::~Suggester()
     m_process->waitForFinished(2000);
 }
 
-void Suggester::suggest(const QString& path, const QString& instruction, const QStringList& to,
-    const QStringList& cc, const QString& before, const QString& after, bool written)
+void Suggester::suggest(const QVariantMap& request)
 {
     if (m_process)
         return;
+    const auto value = [&](const char* key) { return request.value(QLatin1String(key)); };
     QStringList command { QStringLiteral("ai"), QStringLiteral("suggest"),
         QStringLiteral("--json") };
-    for (const QString& address : to)
-        command.append(QStringLiteral("--to=") + address);
-    for (const QString& address : cc)
-        command.append(QStringLiteral("--cc=") + address);
-    if (written)
+    for (const char* kind : { "to", "cc" }) {
+        for (const QString& address : value(kind).toStringList())
+            command.append(QStringLiteral("--%1=%2").arg(QLatin1String(kind), address));
+    }
+    if (value("written").toBool())
         command.append(QStringLiteral("--no-questions"));
-    command << QStringLiteral("--before=") + before << QStringLiteral("--after=") + after
-            << QStringLiteral("--") << path;
+    command << QStringLiteral("--subject=") + value("subject").toString()
+            << QStringLiteral("--before=") + value("before").toString()
+            << QStringLiteral("--after=") + value("after").toString();
+    const QString reply = value("reply").toString();
+    if (reply.isEmpty())
+        command << QStringLiteral("--") << value("account").toString();
+    else
+        command.append(QStringLiteral("--reply=") + reply);
     auto* process = new QProcess(this);
     m_process = process;
     process->setChildProcessModifier([] {
@@ -57,7 +63,7 @@ void Suggester::suggest(const QString& path, const QString& instruction, const Q
         emit failed(message);
     });
     process->start(lamemail::binary(), lamemail::arguments(command));
-    process->write(instruction.toUtf8());
+    process->write(value("instruction").toString().toUtf8());
     process->closeWriteChannel();
     emit runningChanged();
 }

@@ -316,6 +316,7 @@ View {
             onSendRequested: page.send()
             onSaveRequested: page.saveDraft()
             onDiscardRequested: page.discard()
+            onSuggestionFailed: (error) => page.failed(error)
             onWarning: (message) => page.failed(message)
         }
     }

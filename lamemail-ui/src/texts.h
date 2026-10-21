@@ -65,7 +65,6 @@ struct Texts {
     const char* aiCommand;
     const char* aiCommandHint;
     const char* aiCommandOff;
-    const char* aiCommandReplyOnly;
     const char* aiThinking;
     const char* aiStop;
     const char* aiAsks;
@@ -419,7 +418,6 @@ class Strings : public QObject {
     Q_PROPERTY(QString aiCommand READ aiCommand CONSTANT)
     Q_PROPERTY(QString aiCommandHint READ aiCommandHint CONSTANT)
     Q_PROPERTY(QString aiCommandOff READ aiCommandOff CONSTANT)
-    Q_PROPERTY(QString aiCommandReplyOnly READ aiCommandReplyOnly CONSTANT)
     Q_PROPERTY(QString aiThinking READ aiThinking CONSTANT)
     Q_PROPERTY(QString aiStop READ aiStop CONSTANT)
     Q_PROPERTY(QString aiAsks READ aiAsks CONSTANT)
@@ -626,7 +624,6 @@ public:
     QString aiCommand() const { return QString::fromUtf8(texts().aiCommand); }
     QString aiCommandHint() const { return QString::fromUtf8(texts().aiCommandHint); }
     QString aiCommandOff() const { return QString::fromUtf8(texts().aiCommandOff); }
-    QString aiCommandReplyOnly() const { return QString::fromUtf8(texts().aiCommandReplyOnly); }
     QString aiThinking() const { return QString::fromUtf8(texts().aiThinking); }
     QString aiStop() const { return QString::fromUtf8(texts().aiStop); }
     QString aiAsks() const { return QString::fromUtf8(texts().aiAsks); }

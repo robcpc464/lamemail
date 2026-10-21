@@ -21,9 +21,9 @@
   without a database or an index.
 - **Slash commands.** Type `/` while you write: `/quote`, `/signature`,
   `/attach`, `/date` and `/ai`.
-- **AI replies.** `/ai` and what you want to say. The model drafts the
-  reply from the message, your history with these people and your own
-  notes.
+- **AI writing.** `/ai` and what you want to say, in a reply or a new
+  mail. The model drafts it from the message, your history with these
+  people and your own notes.
 - **Your model.** Ollama on your machine, or any program you like. Off
   until you switch it on.
 - **Open to agents.** An MCP server lets AI agents read mail and write

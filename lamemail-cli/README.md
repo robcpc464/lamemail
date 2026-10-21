@@ -82,8 +82,10 @@ lamemail ai set custom [<command>]                 or a program of your own, run
 lamemail ai show [--json]                          the AI set, and the known programs and ollama models
 lamemail ai remove                                 no mail goes to an AI any more
 lamemail ai context-limit <chars>                  how much of the context folder the AI gets: 10000, 20000, 50000 or 100000
-lamemail ai suggest <path> [--to <address>...] [--cc <address>...] [--before <text>] [--after <text>] [--no-questions] [--json]
-                                                   the whole text of a reply drafted or revised by the AI, the instruction from stdin
+lamemail ai suggest [<id>] [--reply <path>] [--to <address>...] [--cc <address>...] [--subject <text>]
+                   [--before <text>] [--after <text>] [--no-questions] [--json]
+                                                   the whole text of a new mail or a reply drafted or revised by the AI,
+                                                   the instruction from stdin
 ```
 
 `account add` and `account password` hand the password to `secret-tool`,

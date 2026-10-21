@@ -2,6 +2,14 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- `/ai` (`/ki` in German) works in a new mail too. The AI gets the
+  account's context folder, the earlier mails with the recipients and the
+  subject. `lamemail ai suggest <account>` drafts a new mail; a reply is
+  now `lamemail ai suggest --reply <path>`, and `--subject` passes the
+  subject.
+
 ## 0.6.0
 
 - A mail can be moved into any folder of its account: the new folder

@@ -17,9 +17,7 @@ public:
     ~Suggester() override;
 
     bool running() const { return m_process != nullptr; }
-    Q_INVOKABLE void suggest(const QString& path, const QString& instruction, const QStringList& to,
-        const QStringList& cc, const QString& before = { }, const QString& after = { },
-        bool written = false);
+    Q_INVOKABLE void suggest(const QVariantMap& request);
     Q_INVOKABLE void cancel();
 
 signals:

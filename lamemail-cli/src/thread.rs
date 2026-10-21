@@ -43,6 +43,16 @@ pub fn entries(dir: &Path, settings: &Settings, path: &Path) -> Result<Vec<Entry
         .with_context(|| fill(t().show_not_message, &[&path.display(), &dir.display()]))
 }
 
+pub fn entries_with(
+    dir: &Path,
+    settings: &Settings,
+    id: &str,
+    people: &BTreeSet<String>,
+) -> Result<Vec<Entry>> {
+    let (mails, mine) = read_account(dir, settings, id)?;
+    Ok(history_with(mails, &mine, people, None))
+}
+
 fn read_account(
     dir: &Path,
     settings: &Settings,
@@ -62,27 +72,36 @@ fn read_account(
 }
 
 fn history(mails: Vec<Mail>, mine: &BTreeSet<String>, anchor: &str) -> Option<Vec<Entry>> {
-    let wanted: BTreeSet<String> = mails
+    let people: BTreeSet<String> = mails
         .iter()
         .find(|mail| mail.located.path == anchor)?
         .counterparts
         .keys()
         .cloned()
         .collect();
+    Some(history_with(mails, mine, &people, Some(anchor)))
+}
+
+fn history_with(
+    mails: Vec<Mail>,
+    mine: &BTreeSet<String>,
+    people: &BTreeSet<String>,
+    anchor: Option<&str>,
+) -> Vec<Entry> {
     let mut mails = list::one_copy(mails, |mail| {
         let id = mail.file.message_id.clone()?;
         Some((
             id,
             (
-                mail.located.path != anchor,
+                Some(mail.located.path.as_str()) != anchor,
                 kind::rank(false, mail.located.kind),
             ),
         ))
     });
-    mails.retain(|mail| includes(&mail.counterparts, &wanted));
+    mails.retain(|mail| includes(&mail.counterparts, people));
     let paths: Vec<String> = mails.iter().map(|mail| mail.located.path.clone()).collect();
     let parents = parents(&mails);
-    let entries = mails
+    mails
         .into_iter()
         .zip(parents)
         .map(|(mail, parent)| Entry {
@@ -91,8 +110,7 @@ fn history(mails: Vec<Mail>, mine: &BTreeSet<String>, anchor: &str) -> Option<Ve
             counterparts: mail.counterparts.into_values().collect(),
             parent: parent.map(|parent| paths[parent].clone()),
         })
-        .collect();
-    Some(entries)
+        .collect()
 }
 
 fn counterparts(file: &MailFile, mine: &BTreeSet<String>) -> BTreeMap<String, Addr> {
