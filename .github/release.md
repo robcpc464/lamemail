@@ -1,4 +1,4 @@
-**Install** on x86_64 with Qt @QT@ or newer, as on Omarchy and Arch Linux:
+**Install** on x86_64 with Qt @QT@ or newer:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/@REPOSITORY@/master/install.sh | sh
