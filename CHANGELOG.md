@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.8.0
 
 - `lamemail-ui --open <path>` opens a mail, its path as
   `lamemail list --json` prints it: in the running window, or in a new
