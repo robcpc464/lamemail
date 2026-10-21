@@ -11,11 +11,11 @@ class Instance : public QObject {
 public:
     explicit Instance(const QString& dir, QObject* parent = nullptr);
 
-    bool handOver(const QByteArray& token);
+    bool handOver(const QByteArray& token, const QString& path);
     bool listen();
 
 signals:
-    void activated(const QByteArray& token);
+    void activated(const QByteArray& token, const QString& path);
 
 private:
     QString m_name;

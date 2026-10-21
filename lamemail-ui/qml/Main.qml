@@ -60,6 +60,12 @@ Window {
         root.enter("compose")
     }
 
+    function reveal(path) {
+        root.present()
+        if (path.length > 0)
+            root.showMail(path)
+    }
+
     function showMail(path) {
         feed.markSeen(path, true)
         mailPage.show(path)
@@ -325,11 +331,7 @@ Window {
 
     Notifier {
         id: notifier
-        onOpened: (path) => {
-            root.present()
-            if (path.length > 0)
-                root.showMail(path)
-        }
+        onOpened: (path) => root.reveal(path)
     }
 
     Journal {

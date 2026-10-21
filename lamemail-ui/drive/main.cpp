@@ -57,6 +57,7 @@ public:
         const bool done = command == QLatin1String("type") ? type(rest)
             : command == QLatin1String("key")              ? press(rest)
             : command == QLatin1String("shot")             ? capture(rest)
+            : command == QLatin1String("open")             ? reveal(rest)
                                                            : point(command, rest);
         if (!done)
             say(stderr, QStringLiteral("not a step: `%1`").arg(step));
@@ -79,6 +80,12 @@ private:
             return false;
         QTest::keySequence(m_window, keys);
         return settled(true);
+    }
+
+    bool reveal(const QString& path)
+    {
+        lamemail::reveal(m_window, path);
+        return settled(!path.isEmpty());
     }
 
     bool capture(const QString& name)
@@ -177,7 +184,8 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral(
         "Drives lamemail-ui without a display and captures it, step by step:\n"
         "  size <w> <h>, click <x> <y> [ctrl|right], move <x> <y>, drag <x> <y> <x2> <y2>,\n"
-        "  wheel <x> <y> <notches>, key <sequence>, type <text>, wait <ms>, shot <name>"));
+        "  wheel <x> <y> <notches>, key <sequence>, type <text>, open <path>, wait <ms>,\n"
+        "  shot <name>"));
     parser.addHelpOption();
     const QCommandLineOption dir = lamemail::dirOption();
     const QCommandLineOption out(QStringLiteral("out"),

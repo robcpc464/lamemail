@@ -25,12 +25,15 @@ int main(int argc, char* argv[])
     const QCommandLineOption dir = lamemail::dirOption();
     const QCommandLineOption hidden(QStringLiteral("hidden"),
         QStringLiteral("Start in the tray, without the window, when closing to the tray is on"));
-    parser.addOptions({ dir, hidden });
+    const QCommandLineOption message(QStringLiteral("open"),
+        QStringLiteral("Open a message, its path as `lamemail list --json` prints it"),
+        QStringLiteral("PATH"));
+    parser.addOptions({ dir, hidden, message });
     parser.process(app);
     lamemail::setDir(lamemail::syncDir(parser.value(dir)));
 
     Instance instance(lamemail::dir());
-    if (instance.handOver(token))
+    if (instance.handOver(token, parser.value(message)))
         return 0;
 
     const QString image = qEnvironmentVariable("APPIMAGE");
@@ -43,14 +46,17 @@ int main(int argc, char* argv[])
             + QStringLiteral("/autostart/lamemail-ui.desktop"));
 
     QQmlApplicationEngine engine;
-    QQuickWindow* window = lamemail::open(engine, parser.isSet(hidden));
+    QQuickWindow* window = lamemail::open(engine, parser.isSet(hidden) && !parser.isSet(message));
     if (!window)
         return 1;
     instance.listen();
-    QObject::connect(&instance, &Instance::activated, window, [window](const QByteArray& handed) {
-        if (!handed.isEmpty())
-            qputenv("XDG_ACTIVATION_TOKEN", handed);
-        QMetaObject::invokeMethod(window, "present");
-    });
+    QObject::connect(&instance, &Instance::activated, window,
+        [window](const QByteArray& handed, const QString& path) {
+            if (!handed.isEmpty())
+                qputenv("XDG_ACTIVATION_TOKEN", handed);
+            lamemail::reveal(window, path);
+        });
+    if (parser.isSet(message))
+        lamemail::reveal(window, parser.value(message));
     return QGuiApplication::exec();
 }

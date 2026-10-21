@@ -204,7 +204,7 @@ usage: ./dev <command>
                        one step per argument, captures in
                        lamemail-ui/build/captures/: size <w> <h>, click <x> <y> [ctrl|right], move <x> <y>,
                        drag <x> <y> <x2> <y2>, wheel <x> <y> <notches>, key <sequence>, type <text>,
-                       wait <ms>, shot <name>
+                       open <path>, wait <ms>, shot <name>
   ui                   start the UI on testdata/mail/ and leave it running, log in lamemail-ui/build/ui.log
 EOF
 }

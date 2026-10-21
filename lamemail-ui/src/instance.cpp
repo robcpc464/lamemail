@@ -29,22 +29,23 @@ Instance::Instance(const QString& dir, QObject* parent)
         while (QLocalSocket* socket = m_server.nextPendingConnection()) {
             connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
             connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
-                if (!socket->canReadLine())
+                if (socket->peek(socket->bytesAvailable()).count('\n') < 2)
                     return;
-                emit activated(socket->readLine().trimmed());
+                const QByteArray token = socket->readLine().trimmed();
+                emit activated(token, QString::fromUtf8(socket->readLine().chopped(1)));
                 socket->disconnectFromServer();
             });
         }
     });
 }
 
-bool Instance::handOver(const QByteArray& token)
+bool Instance::handOver(const QByteArray& token, const QString& path)
 {
     QLocalSocket socket;
     socket.connectToServer(m_name);
     if (!socket.waitForConnected(waitMs))
         return false;
-    socket.write(token + '\n');
+    socket.write(token + '\n' + path.toUtf8() + '\n');
     return socket.waitForBytesWritten(waitMs);
 }
 

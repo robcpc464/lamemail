@@ -41,4 +41,9 @@ QQuickWindow* open(QQmlApplicationEngine& engine, bool hidden)
     return roots.isEmpty() ? nullptr : qobject_cast<QQuickWindow*>(roots.constFirst());
 }
 
+void reveal(QQuickWindow* window, const QString& path)
+{
+    QMetaObject::invokeMethod(window, "reveal", Q_ARG(QVariant, path));
+}
+
 }

@@ -2296,7 +2296,7 @@ exit "$(cat "$dir/code")"
             QStringLiteral("\"/a b/\\\\$x\\\\\"y\" 50%%"));
     }
 
-    void instanceHandsOverToTheOneOfTheSameFolder()
+    void instanceHandsTokenAndMailToTheOneOfTheSameFolder()
     {
         QTemporaryDir runtime;
         const QByteArray realRuntime = qgetenv("XDG_RUNTIME_DIR");
@@ -2307,10 +2307,16 @@ exit "$(cat "$dir/code")"
         if (!first.listen())
             QSKIP("no local sockets here");
         QSignalSpy activated(&first, &Instance::activated);
-        QVERIFY(Instance(QStringLiteral("./mail")).handOver("token"));
+        const QString path = QStringLiteral("private/inbox/2026-09-15_1432-offer for ä.json");
+        QVERIFY(Instance(QStringLiteral("./mail")).handOver("token", path));
         QVERIFY(activated.wait());
         QCOMPARE(activated.at(0).at(0).toByteArray(), QByteArray("token"));
-        QVERIFY(!Instance(QStringLiteral("other")).handOver({ }));
+        QCOMPARE(activated.at(0).at(1).toString(), path);
+        QVERIFY(Instance(QStringLiteral("mail")).handOver({ }, { }));
+        QVERIFY(activated.wait());
+        QCOMPARE(activated.at(1).at(0).toByteArray(), QByteArray());
+        QCOMPARE(activated.at(1).at(1).toString(), QString());
+        QVERIFY(!Instance(QStringLiteral("other")).handOver({ }, { }));
     }
 };
 

@@ -2,6 +2,12 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- `lamemail-ui --open <path>` opens a mail, its path as
+  `lamemail list --json` prints it: in the running window, or in a new
+  one. Bar plugins and scripts can open a mail this way.
+
 ## 0.7.0
 
 - `/ai` (`/ki` in German) works in a new mail too. The AI gets the
