@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.9.0
 
 - The mouse wheel scrolls by the distance set under General again; with
   Qt 6.12 it had moved only a few pixels a notch.
