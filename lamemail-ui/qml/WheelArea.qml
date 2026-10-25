@@ -12,7 +12,7 @@ MouseArea {
     acceptedButtons: Qt.NoButton
     cursorShape: undefined
     onWheel: (wheel) => {
-        if (wheel.pixelDelta.y !== 0) {
+        if (wheel.phase !== Qt.NoScrollPhase) {
             wheel.accepted = false
             return
         }

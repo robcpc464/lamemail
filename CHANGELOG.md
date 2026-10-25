@@ -2,6 +2,13 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- The mouse wheel scrolls by the distance set under General again; with
+  Qt 6.12 it had moved only a few pixels a notch.
+- A button at the top right of the settings quits lamemail, also while
+  it closes to the tray.
+
 ## 0.8.0
 
 - `lamemail-ui --open <path>` opens a mail, its path as

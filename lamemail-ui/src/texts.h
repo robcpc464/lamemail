@@ -228,6 +228,7 @@ struct Texts {
     const char* searchTip;
     const char* composeTip;
     const char* settingsTip;
+    const char* quitTip;
     const char* syncTip;
     const char* starTip;
     const char* unstarTip;
@@ -384,6 +385,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString searchTip READ searchTip CONSTANT)
     Q_PROPERTY(QString composeTip READ composeTip CONSTANT)
     Q_PROPERTY(QString settingsTip READ settingsTip CONSTANT)
+    Q_PROPERTY(QString quitTip READ quitTip CONSTANT)
     Q_PROPERTY(QString syncTip READ syncTip CONSTANT)
     Q_PROPERTY(QString starTip READ starTip CONSTANT)
     Q_PROPERTY(QString unstarTip READ unstarTip CONSTANT)
@@ -590,6 +592,7 @@ public:
     QString searchTip() const { return QString::fromUtf8(texts().searchTip); }
     QString composeTip() const { return QString::fromUtf8(texts().composeTip); }
     QString settingsTip() const { return QString::fromUtf8(texts().settingsTip); }
+    QString quitTip() const { return QString::fromUtf8(texts().quitTip); }
     QString syncTip() const { return QString::fromUtf8(texts().syncTip); }
     QString starTip() const { return QString::fromUtf8(texts().starTip); }
     QString unstarTip() const { return QString::fromUtf8(texts().unstarTip); }

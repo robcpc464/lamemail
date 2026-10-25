@@ -14,6 +14,7 @@ View {
     readonly property list<SettingsSection> sections: [general, mailboxes, assistant, folderKinds, commandLine, info]
     readonly property string section: (sections.find((entry) => entry.key === memory.section) ?? sections[0]).key
     signal closeRequested()
+    signal quitRequested()
     signal accountAdded(string name, string message)
     signal accountRemoved(string message)
     signal loginsChanged()
@@ -58,22 +59,22 @@ View {
     }
 
     function takeFocusBack() {
-        if (active)
+        if (page.active)
             page.forceActiveFocus()
     }
 
     function refresh() {
-        if (active && section === folderKinds.key)
+        if (page.active && page.section === folderKinds.key)
             folders.reload()
-        if (active && (section === mailboxes.key || section === assistant.key))
+        if (page.active && (page.section === mailboxes.key || page.section === assistant.key))
             accountModel.reload()
     }
 
     function load() {
         page.refresh()
-        if (active && section === assistant.key)
+        if (page.active && page.section === assistant.key)
             Ai.reload()
-        if (active && section === commandLine.key && manual.commands.length === 0)
+        if (page.active && page.section === commandLine.key && manual.commands.length === 0)
             manual.load()
     }
 
@@ -92,7 +93,7 @@ View {
     onSectionChanged: page.load()
 
     onActiveChanged: {
-        if (active) {
+        if (page.active) {
             page.load()
             page.forceActiveFocus()
         }
@@ -118,6 +119,12 @@ View {
         id: header
         title: Strings.settings
         onBackRequested: page.closeRequested()
+
+        IconButton {
+            name: "power"
+            tip: Strings.quitTip
+            onClicked: page.quitRequested()
+        }
     }
 
     Item {

@@ -30,17 +30,17 @@ Window {
     readonly property bool searching: feed.query.trim().length > 0
 
     function enter(name) {
-        if (view !== name)
-            views = views.concat([name])
+        if (root.view !== name)
+            root.views = root.views.concat([name])
     }
 
     function back() {
-        if (views.length > 1)
-            views = views.slice(0, -1)
+        if (root.views.length > 1)
+            root.views = root.views.slice(0, -1)
     }
 
-    onViewChanged: if (view === "feed") list.forceActiveFocus()
-    onActiveChanged: if (active) unnoticed = false
+    onViewChanged: if (root.view === "feed") list.forceActiveFocus()
+    onActiveChanged: if (root.active) root.unnoticed = false
 
     function present() {
         root.show()
@@ -768,6 +768,7 @@ Window {
         active: root.view === "settings"
         trayMissing: Preferences.closeToTray && !root.toTray
         onCloseRequested: root.back()
+        onQuitRequested: root.quit()
         onAccountAdded: (name, message) => {
             toast.show({ icon: "user", text: message })
             syncer.sync([name])

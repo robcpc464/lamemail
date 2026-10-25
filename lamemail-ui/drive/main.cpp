@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QImage>
 #include <QKeySequence>
+#include <QPointingDevice>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QRegularExpression>
@@ -25,6 +26,7 @@ constexpr int loadMs = 1500;
 constexpr int settleMs = 400;
 constexpr int dragSteps = 20;
 constexpr int notch = 120;
+constexpr int notchPixels = 15;
 
 void say(FILE* to, const QString& line) { QTextStream(to) << line << Qt::endl; }
 
@@ -46,6 +48,10 @@ class Drive {
 public:
     Drive(QQuickWindow* window, const QDir& out)
         : m_window(window)
+        , m_touchpad(
+              new QPointingDevice(QStringLiteral("touchpad"), 0, QInputDevice::DeviceType::TouchPad,
+                  QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position, 1, 0,
+                  QString(), QPointingDeviceUniqueId(), window))
         , m_out(out)
     {
     }
@@ -134,8 +140,9 @@ private:
             QTest::mouseClick(m_window, right ? Qt::RightButton : Qt::LeftButton,
                 ctrl ? Qt::ControlModifier : Qt::NoModifier, at);
         } else if (command == QLatin1String("wheel")) {
-            QWheelEvent turn(at, m_window->mapToGlobal(at), { }, { 0, -notch * n[2] }, Qt::NoButton,
-                Qt::NoModifier, Qt::NoScrollPhase, false);
+            QWheelEvent turn(at, m_window->mapToGlobal(at), { 0, -notchPixels * n[2] },
+                { 0, -notch * n[2] }, Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false,
+                Qt::MouseEventNotSynthesized, m_touchpad);
             QCoreApplication::sendEvent(m_window, &turn);
         } else if (command == QLatin1String("drag")) {
             const QPoint to(n[2], n[3]);
@@ -154,6 +161,7 @@ private:
     }
 
     QQuickWindow* m_window;
+    const QPointingDevice* m_touchpad;
     QDir m_out;
 };
 
