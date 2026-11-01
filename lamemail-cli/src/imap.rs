@@ -288,8 +288,24 @@ fn refused_or(err: async_imap::error::Error, command: &str) -> anyhow::Error {
 }
 
 pub fn uid_set(uids: &[u32]) -> String {
-    uids.iter()
-        .map(u32::to_string)
+    let mut sorted = uids.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut runs: Vec<(u32, u32)> = Vec::new();
+    for uid in sorted {
+        match runs.last_mut() {
+            Some((_, last)) if *last == uid - 1 => *last = uid,
+            _ => runs.push((uid, uid)),
+        }
+    }
+    runs.iter()
+        .map(|&(first, last)| {
+            if first == last {
+                first.to_string()
+            } else {
+                format!("{first}:{last}")
+            }
+        })
         .collect::<Vec<_>>()
         .join(",")
 }
@@ -463,6 +479,17 @@ mod tests {
         format!("{err:#}")
     }
 
+    #[test]
+    fn a_uid_set_writes_consecutive_uids_as_ranges() {
+        assert_eq!(uid_set(&[]), "");
+        assert_eq!(uid_set(&[4]), "4");
+        assert_eq!(uid_set(&[9, 1, 2, 3, 5, 6, 2, 12]), "1:3,5:6,9,12");
+        assert_eq!(
+            uid_set(&[0, u32::MAX - 1, u32::MAX]),
+            format!("0,{}:{}", u32::MAX - 1, u32::MAX)
+        );
+    }
+
     #[tokio::test]
     async fn folders_are_listed_with_their_markings() {
         let listed = "* LIST (\\HasNoChildren) \"/\" INBOX\r\n\
@@ -556,7 +583,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_comes_with_its_time_size_flags_and_body() {
-        let fetch = "UID FETCH 7,8 (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])";
+        let fetch = "UID FETCH 7:8 (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])";
         let fetched = "* 1 FETCH (UID 7 FLAGS (\\Answered) \
                        INTERNALDATE \" 5-Jan-2026 09:03:07 +0100\" RFC822.SIZE 9 BODY[] {5}\r\n\
                        hello)\r\n\
@@ -584,7 +611,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_change_is_refused_and_a_cut_off_one_fails() {
-        let command = "UID STORE 4,5 +FLAGS.SILENT (\\Seen)";
+        let command = "UID STORE 4:5 +FLAGS.SILENT (\\Seen)";
         let mut session = logged_in(&[(command, DONE)]).await;
         store(&mut session, &[4, 5], SEEN).await.unwrap();
 

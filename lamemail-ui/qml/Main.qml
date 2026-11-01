@@ -18,6 +18,8 @@ Window {
     property var views: ["feed"]
     readonly property string view: views[views.length - 1]
     property var pending: null
+    property var deleted: []
+    readonly property var deleting: (root.pending?.deleteForGood ? root.pending.paths : []).concat(root.deleted)
     property bool quitting: false
     property bool exiting: false
     property bool unnoticed: false
@@ -111,8 +113,15 @@ Window {
     }
 
     function requestDelete(path) {
-        if (root.pending?.path !== path)
-            root.hold({ path: path, deleteForGood: true }, "trash", root.named(Strings.deleting, path))
+        if (!root.deleting.includes(path))
+            root.hold({ paths: [path], deleteForGood: true }, "trash", root.named(Strings.deleting, path))
+    }
+
+    function requestEmptyTrash() {
+        const deleting = new Set(root.deleting)
+        const paths = feed.paths("trash").filter(path => !deleting.has(path))
+        if (paths.length > 0)
+            root.hold({ paths: paths, deleteForGood: true }, "trash", Strings.emptyingTrash.replace("{}", paths.length))
     }
 
     function hold(job, icon, text) {
@@ -139,9 +148,14 @@ Window {
         if (job.discard)
             sender.discard(job)
         else if (job.deleteForGood)
-            sender.deleteForGood(job.path)
+            root.deleteForGood(job.paths)
         else
             sender.send(job)
+    }
+
+    function deleteForGood(paths) {
+        root.deleted = root.deleted.concat(paths)
+        sender.deleteForGood(paths)
     }
 
     function undo() {
@@ -230,6 +244,12 @@ Window {
         id: feed
         flaggedFirst: Preferences.flaggedFirst
         kinds: bar.kind.length > 0 ? [bar.kind] : Preferences.feedKinds
+        onLoadingChanged: {
+            if (feed.loading || root.deleted.length === 0)
+                return
+            const listed = new Set(feed.paths("trash"))
+            root.deleted = root.deleted.filter(path => listed.has(path))
+        }
         onActionFailed: (path, error) => {
             root.undoing = root.undoing.filter(undone => undone !== path)
             toast.show({ icon: "junk", ok: false, text: error })
@@ -294,9 +314,13 @@ Window {
             }
             root.pushSoon()
         }
-        onDeletedForGood: (path, error) => {
-            if (root.noted(error))
+        onDeletedForGood: (paths, error) => {
+            if (root.noted(error)) {
                 root.pushSoon()
+                return
+            }
+            const failed = new Set(paths)
+            root.deleted = root.deleted.filter(path => !failed.has(path))
         }
     }
 
@@ -431,6 +455,8 @@ Window {
             anchors.right: parent.right
             searching: search.open
             filtering: !root.searching
+            trash: bar.kind === "trash" && !root.searching ? Math.max(0, feed.count - root.deleting.length) : 0
+            onEmptyTrashRequested: root.requestEmptyTrash()
             onSearchRequested: {
                 if (search.open) {
                     search.hide()
@@ -505,7 +531,7 @@ Window {
 
             delegate: MailRow {
                 id: row
-                locked: root.pending?.path === row.path || root.pending?.opened === row.path
+                locked: root.deleting.includes(row.path) || root.pending?.path === row.path || root.pending?.opened === row.path
                         || root.undoMoves.some(move => move.path === row.path)
                 waiting: journal.leaving.includes(row.path) || journal.answering.includes(row.path)
                 onClicked: {
@@ -527,13 +553,15 @@ Window {
 
             function moveCurrent(key) {
                 const row = list.currentItem as MailRow
+                if (!row || root.deleting.includes(row.path))
+                    return
                 const trash = key === Qt.Key_Delete
-                if (trash && row?.kind === "trash") {
+                if (trash && row.kind === "trash") {
                     root.requestDelete(row.path)
                     list.passBy(row.path)
                     return
                 }
-                const target = row ? Styles.moves(row.kind).find(move => (move === "trash") === trash) : undefined
+                const target = Styles.moves(row.kind).find(move => (move === "trash") === trash)
                 if (!target)
                     return
                 feed.move(row.path, target)

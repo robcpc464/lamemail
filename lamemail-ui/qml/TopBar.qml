@@ -12,10 +12,12 @@ Rectangle {
     property bool syncing: false
     property bool filtering: true
     property string kind
+    property int trash
     signal searchRequested()
     signal syncRequested()
     signal settingsRequested()
     signal composeRequested()
+    signal emptyTrashRequested()
 
     Item {
         id: content
@@ -24,6 +26,7 @@ Rectangle {
         height: parent.height
 
         Row {
+            id: filters
             anchors.verticalCenter: parent.verticalCenter
             spacing: 14
 
@@ -61,6 +64,40 @@ Rectangle {
         }
 
         Row {
+            id: emptying
+            anchors.left: filters.right
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            visible: bar.trash > 0
+            spacing: 8
+
+            readonly property string label: Strings.emptyTrash.replace("{}", bar.trash)
+            readonly property bool roomy: tools.x - emptying.x - divider.width - emptying.spacing - 16
+                                          >= labelSize.advanceWidth + 20
+
+            TextMetrics {
+                id: labelSize
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 1
+                text: emptying.label
+            }
+
+            Divider {
+                id: divider
+            }
+
+            Pill {
+                anchors.verticalCenter: parent.verticalCenter
+                text: emptying.roomy ? emptying.label : String(bar.trash)
+                icon: emptying.roomy ? "" : "trash"
+                tip: emptying.roomy ? "" : emptying.label
+                danger: true
+                onClicked: bar.emptyTrashRequested()
+            }
+        }
+
+        Row {
+            id: tools
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4

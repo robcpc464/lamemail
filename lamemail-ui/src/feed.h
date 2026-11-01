@@ -78,6 +78,7 @@ public:
     Q_INVOKABLE void markFlagged(const QString& path, bool flagged);
     Q_INVOKABLE void move(const QString& path, const QString& folder);
     Q_INVOKABLE QString subject(const QString& path) const;
+    Q_INVOKABLE QStringList paths(const QString& kind) const;
 
 signals:
     void countChanged();

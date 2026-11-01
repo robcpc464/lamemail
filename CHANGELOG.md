@@ -2,6 +2,13 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- The trash can be emptied: with the trash chosen in the top bar,
+  "Empty trash" deletes all mail in it for good, with five seconds to
+  undo. `lamemail delete` takes several mails at once, or their paths on
+  stdin with `--stdin`.
+
 ## 0.9.0
 
 - The mouse wheel scrolls by the distance set under General again; with

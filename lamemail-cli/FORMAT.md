@@ -542,7 +542,9 @@ a message still in its folder until its move is pushed.
 `lamemail push` sends the journal to the server, per account and folder in
 one bundle: `SELECT`, the `UIDVALIDITY` of `.folder.json` checked, one
 `UID STORE` per change with all its UIDs, then `UID FETCH FLAGS` of exactly
-those messages, whose flags are written into their files. The pushed
+those messages, whose flags are written into their files. Consecutive UIDs
+go as a range (`1:500`) in every UID set lamemail sends, so a large bundle
+stays within the length servers allow a command line. The pushed
 entries leave the journal, entries noted meanwhile stay. The server wins a
 conflict: an entry whose message is gone, whose folder changed its
 `UIDVALIDITY`, or whose `UID STORE` the server refuses, is dropped and
@@ -679,21 +681,26 @@ target's.
 
 ### `delete`
 
-`lamemail delete <path>` deletes a message for good, and only one in its
-account's trash, a folder of the kind `trash`, as the
+`lamemail delete <path>...` deletes messages for good, and only those in
+their account's trash, a folder of the kind `trash`, as the
 journal shows it: a message whose move into the trash waits counts, one
-whose move out of it waits does not. Anywhere else it ends with exit code
-1, so mail always goes through the trash first.
+whose move out of it waits does not. Every message is checked before any
+is noted: one anywhere else, or one already deleted, ends the command with
+exit code 1 and notes none, so mail always goes through the trash first.
+`--stdin` reads further paths from stdin, one per line, for more than a
+command line holds (emptying a large trash).
 
 ```sh
 lamemail delete private/trash/2026-09-15_1432-offer-for-project-4711.json
+lamemail list --json --kind trash | jq -r .path | lamemail delete --stdin
 ```
 
-The message is noted as `"action": "discard"`, as the copies of a
+Each message is noted as `"action": "discard"`, as the copies of a
 discarded draft are (see `draft`): `list`, `show` and `folder list` leave it
 out at once, a later `flag` or `move` of it is not noted, and the push
-expunges it (`\Deleted` and `UID EXPUNGE`) before the folder's moves and
-removes its file; a message gone by then counts as done.
+expunges a folder's messages together (`\Deleted` and `UID EXPUNGE`) before
+the folder's moves and removes their files; a message gone by then counts
+as done.
 
 ### The folders of an account
 

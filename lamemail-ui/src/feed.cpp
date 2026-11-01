@@ -249,6 +249,16 @@ QString Feed::subject(const QString& path) const
     return at < qsizetype(m_rows.size()) ? m_rows[at].entry.subject : QString();
 }
 
+QStringList Feed::paths(const QString& kind) const
+{
+    QStringList paths;
+    for (const Row& row : m_rows) {
+        if (row.entry.kind == kind)
+            paths.append(row.entry.path);
+    }
+    return paths;
+}
+
 void Feed::enqueue(const Job& job)
 {
     m_jobs.append(job);

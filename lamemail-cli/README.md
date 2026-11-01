@@ -67,7 +67,7 @@ lamemail flag <path> <change>                      seen, unseen, flagged, unflag
                                                    noted in the journal at once
 lamemail push [--json]                             send the journal to the server, bundled, and the mail it holds
 lamemail move <path> <folder> [--json]             into another folder of the account (or archive, trash, junk, inbox)
-lamemail delete <path>                             a message in the trash, for good with the next push
+lamemail delete <path>... [--stdin]                messages in the trash, for good with the next push
 lamemail journal [--json]                          what waits in the journal for the next push
 lamemail contacts [--json]                         everyone known from the mail, the people written to first
 lamemail folder list [--json]                      the kinds of folders with their style, summed over all accounts

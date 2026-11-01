@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <functional>
@@ -20,14 +21,14 @@ public:
     Q_INVOKABLE void send(const QVariantMap& job);
     Q_INVOKABLE void save(const QVariantMap& job);
     Q_INVOKABLE void discard(const QVariantMap& job);
-    Q_INVOKABLE void deleteForGood(const QString& path);
+    Q_INVOKABLE void deleteForGood(const QStringList& paths);
 
 signals:
     void notingChanged();
     void finished(const QVariantMap& job, const QString& messageId, const QString& error);
     void saved(const QVariantMap& job, const QString& messageId, const QString& error);
     void discarded(const QVariantMap& job, const QString& error);
-    void deletedForGood(const QString& path, const QString& error);
+    void deletedForGood(const QStringList& paths, const QString& error);
 
 private:
     void note(const QString& verb, const QVariantMap& job,

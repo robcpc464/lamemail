@@ -8,13 +8,16 @@ Rectangle {
     property color swatch: "transparent"
     property bool on: false
     property bool outlined: false
+    property bool danger: false
     property string tip
+    readonly property bool warning: danger && hover.hovered
     signal clicked()
 
     width: pill.text.length > 0 ? content.implicitWidth + 20 : height
     height: 30
     radius: Theme.radius
-    color: Qt.alpha(on ? Theme.accent : Theme.foreground, on ? 0.22 : (hover.hovered ? 0.12 : 0.06))
+    color: warning ? Qt.alpha(Theme.red, 0.15)
+                   : Qt.alpha(on ? Theme.accent : Theme.foreground, on ? 0.22 : (hover.hovered ? 0.12 : 0.06))
     border.width: 1
     border.color: outlined ? Theme.accent : "transparent"
     Behavior on color { ColorAnimation { duration: 120 } }
@@ -38,14 +41,14 @@ Rectangle {
             visible: pill.icon.length > 0
             name: pill.icon
             size: 14
-            color: pill.on ? Theme.accent : Theme.muted
+            color: pill.warning ? Theme.red : (pill.on ? Theme.accent : Theme.muted)
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
             visible: text.length > 0
             text: pill.text
-            color: pill.on ? Theme.foregroundBright : Theme.muted
+            color: pill.warning ? Theme.red : (pill.on ? Theme.foregroundBright : Theme.muted)
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }

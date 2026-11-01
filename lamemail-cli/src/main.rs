@@ -219,13 +219,16 @@ enum Command {
         json: bool,
     },
     #[command(
-        about = "Delete a message in the trash for good: noted in the journal at once, expunged with the next push"
+        about = "Delete messages in the trash for good: noted in the journal at once, expunged with the next push; when one of them is not in the trash, none is noted"
     )]
     Delete {
         #[arg(
-            help = "Message file, as printed by `lamemail list --json` (relative to the sync folder)"
+            required_unless_present = "stdin",
+            help = "Message files, as printed by `lamemail list --json` (relative to the sync folder)"
         )]
-        path: PathBuf,
+        paths: Vec<PathBuf>,
+        #[arg(long, help = "Read further message files from stdin, one per line")]
+        stdin: bool,
     },
     #[command(
         about = "Send what the journal holds to the server: changes bundled per folder, then exactly those messages mirrored; then the mail"
@@ -720,7 +723,7 @@ async fn run(cli: Cli) -> Result<()> {
         } => draft::run_discard(&dir, &id, &message_id, json),
         Command::Flag { path, change } => flag::run(&dir, &path, change),
         Command::Move { path, folder, json } => moving::run(&dir, &path, &folder, json),
-        Command::Delete { path } => moving::delete(&dir, &path),
+        Command::Delete { paths, stdin } => moving::delete(&dir, paths, stdin),
         Command::Push { json } => journal::run_push(&dir, cli.dev.as_deref(), json).await,
         Command::Journal { json } => journal::run_list(&dir, json),
         Command::Contacts { json } => contacts::run(&dir, json),

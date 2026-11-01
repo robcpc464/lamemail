@@ -560,6 +560,26 @@ exit "$(cat "$dir/code")"
         QVERIFY(!isInside(QStringLiteral("/m/private/inbox/a-1.json"), QString()));
     }
 
+    void feedGivesThePathsOfAKind()
+    {
+        Feed feed;
+        QByteArray out = mails({ "a", "b", "c" });
+        for (const QString& id : { QStringLiteral("b"), QStringLiteral("c") })
+            out.replace(QStringLiteral(R"("path":"private/inbox/2026-09-15_1432-%1.json")")
+                            .arg(id)
+                            .toUtf8(),
+                QStringLiteral(R"("kind":"trash","path":"private/trash/2026-09-15_1432-%1.json")")
+                    .arg(id)
+                    .toUtf8());
+        answer(out);
+        load(feed);
+        QCOMPARE(feed.paths(QStringLiteral("trash")),
+            QStringList({ "private/trash/2026-09-15_1432-b.json",
+                "private/trash/2026-09-15_1432-c.json" }));
+        QVERIFY(feed.paths(QStringLiteral("inbox")).isEmpty());
+        answer({ });
+    }
+
     void feedStreamsTheFirstLoadAndMergesReloads()
     {
         Feed feed;
@@ -1569,24 +1589,27 @@ exit "$(cat "$dir/code")"
         answer({ });
     }
 
-    void senderDeletesAMailInTheTrashForGood()
+    void senderDeletesMailInTheTrashForGood()
     {
         Sender sender;
         QSignalSpy deleted(&sender, &Sender::deletedForGood);
-        const QString path = QStringLiteral("work/trash/a-1.json");
-        answer("work/trash/a-1.json: deleted\n");
-        sender.deleteForGood(path);
+        const QStringList paths { QStringLiteral("work/trash/a-1.json"),
+            QStringLiteral("work/trash/b-2.json") };
+        answer("work/trash/a-1.json: deleted\nwork/trash/b-2.json: deleted\n");
+        sender.deleteForGood(paths);
         QCOMPARE(sender.noting(), 1);
         QTRY_COMPARE(deleted.count(), 1);
         QCOMPARE(sender.noting(), 0);
         QCOMPARE(read(m_fake.filePath(QStringLiteral("args"))),
-            "--dir\n" + lamemail::dir().toUtf8() + "\ndelete\n--\nwork/trash/a-1.json\n");
+            "--dir\n" + lamemail::dir().toUtf8() + "\ndelete\n--stdin\n");
+        QCOMPARE(read(m_fake.filePath(QStringLiteral("in"))),
+            QByteArray("work/trash/a-1.json\nwork/trash/b-2.json"));
         QVariantList done = deleted.takeFirst();
-        QCOMPARE(done.at(0).toString(), path);
+        QCOMPARE(done.at(0).toStringList(), paths);
         QVERIFY(done.at(1).toString().isEmpty());
 
         answer({ }, 1, "lamemail: `work/trash/a-1.json` is not in the trash\n");
-        sender.deleteForGood(path);
+        sender.deleteForGood(paths);
         QTRY_COMPARE(deleted.count(), 1);
         done = deleted.takeFirst();
         QCOMPARE(

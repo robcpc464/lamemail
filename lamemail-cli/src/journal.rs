@@ -280,6 +280,14 @@ pub fn record(dir: &Path, path: &str, uidvalidity: u32, action: Action) -> Resul
     edit(dir, |journal| journal.put(path, uidvalidity, action))
 }
 
+pub fn record_discards(dir: &Path, messages: &[(String, u32)]) -> Result<()> {
+    edit(dir, |journal| {
+        for (path, uidvalidity) in messages {
+            journal.put(path, *uidvalidity, Action::Discard);
+        }
+    })
+}
+
 pub fn note_move(
     dir: &Path,
     path: &str,

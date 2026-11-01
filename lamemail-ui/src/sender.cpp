@@ -2,7 +2,6 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QStringList>
 
 void Sender::send(const QVariantMap& job) { note(QStringLiteral("send"), job, &Sender::finished); }
 
@@ -18,11 +17,11 @@ void Sender::discard(const QVariantMap& job)
         });
 }
 
-void Sender::deleteForGood(const QString& path)
+void Sender::deleteForGood(const QStringList& paths)
 {
-    run({ QStringLiteral("delete"), QStringLiteral("--"), path }, { },
-        [this, path](const lamemail::Outcome& outcome) {
-            emit deletedForGood(path, outcome.ok ? QString() : outcome.error);
+    run({ QStringLiteral("delete"), QStringLiteral("--stdin") },
+        paths.join(QLatin1Char('\n')).toUtf8(), [this, paths](const lamemail::Outcome& outcome) {
+            emit deletedForGood(paths, outcome.ok ? QString() : outcome.error);
         });
 }
 

@@ -36,6 +36,7 @@ struct Texts {
     const char* noResults;
     const char* emptyKind;
     const char* kindOnly;
+    const char* emptyTrash;
     const char* noAccounts;
     const char* commands;
     const char* exitedWithCode;
@@ -99,6 +100,7 @@ struct Texts {
     const char* discardTip;
     const char* discarding;
     const char* deleting;
+    const char* emptyingTrash;
     const char* sending;
     const char* sentTo;
     const char* undo;
@@ -282,6 +284,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString noResults READ noResults CONSTANT)
     Q_PROPERTY(QString emptyKind READ emptyKind CONSTANT)
     Q_PROPERTY(QString kindOnly READ kindOnly CONSTANT)
+    Q_PROPERTY(QString emptyTrash READ emptyTrash CONSTANT)
     Q_PROPERTY(QString noAccounts READ noAccounts CONSTANT)
     Q_PROPERTY(QString commands READ commands CONSTANT)
     Q_PROPERTY(QString shortcuts READ shortcuts CONSTANT)
@@ -438,6 +441,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString discardTip READ discardTip CONSTANT)
     Q_PROPERTY(QString discarding READ discarding CONSTANT)
     Q_PROPERTY(QString deleting READ deleting CONSTANT)
+    Q_PROPERTY(QString emptyingTrash READ emptyingTrash CONSTANT)
     Q_PROPERTY(QString sending READ sending CONSTANT)
     Q_PROPERTY(QString undo READ undo CONSTANT)
     Q_PROPERTY(QString undoKey READ undoKey CONSTANT)
@@ -489,6 +493,7 @@ public:
     QString noResults() const { return QString::fromUtf8(texts().noResults); }
     QString emptyKind() const { return QString::fromUtf8(texts().emptyKind); }
     QString kindOnly() const { return QString::fromUtf8(texts().kindOnly); }
+    QString emptyTrash() const { return QString::fromUtf8(texts().emptyTrash); }
     QString noAccounts() const { return QString::fromUtf8(texts().noAccounts); }
     QString commands() const { return QString::fromUtf8(texts().commands); }
     QString shortcuts() const { return QString::fromUtf8(texts().shortcuts); }
@@ -646,6 +651,7 @@ public:
     QString discardTip() const { return QString::fromUtf8(texts().discardTip); }
     QString discarding() const { return QString::fromUtf8(texts().discarding); }
     QString deleting() const { return QString::fromUtf8(texts().deleting); }
+    QString emptyingTrash() const { return QString::fromUtf8(texts().emptyingTrash); }
     QString sending() const { return QString::fromUtf8(texts().sending); }
     QString undo() const { return QString::fromUtf8(texts().undo); }
     QString undoKey() const { return QString::fromUtf8(texts().undoKey); }

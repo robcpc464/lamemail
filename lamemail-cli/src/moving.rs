@@ -1,11 +1,12 @@
-use std::path::Path;
+use std::io::{self, BufRead};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::flag::Change;
 use crate::i18n::{fill, t};
-use crate::journal::{self, Action};
+use crate::journal::{self, Overlay};
 use crate::kind::{self, Assigned, Kind, Kinds};
 use crate::list::{self, Located};
 use crate::settings::{self, Account, Settings};
@@ -36,11 +37,10 @@ struct Placed {
 }
 
 impl Placed {
-    fn find(dir: &Path, settings: &Settings, path: &Path) -> Result<Placed> {
+    fn find(dir: &Path, settings: &Settings, overlay: &Overlay, path: &Path) -> Result<Placed> {
         let located = list::locate_one(dir, settings, path)?;
         store::read_flags(&located.file)?;
         let state = store::state_of(&located.file)?;
-        let overlay = journal::overlay(dir, settings)?;
         if overlay.discards(&located.path) {
             bail!(
                 "{}",
@@ -59,11 +59,12 @@ impl Placed {
 
 pub fn run(dir: &Path, path: &Path, target: &str, json: bool) -> Result<()> {
     let mut settings = settings::load(dir)?;
+    let overlay = journal::overlay(dir, &settings)?;
     let Placed {
         located,
         uidvalidity,
         shown,
-    } = Placed::find(dir, &settings, path)?;
+    } = Placed::find(dir, &settings, &overlay, path)?;
     let id = &located.account;
     let folder = match year_folder(settings.account(id)?, target, &located.time) {
         Some(folder) => {
@@ -102,16 +103,35 @@ pub fn run(dir: &Path, path: &Path, target: &str, json: bool) -> Result<()> {
     })
 }
 
-pub fn delete(dir: &Path, path: &Path) -> Result<()> {
-    let settings = settings::load(dir)?;
-    let placed = Placed::find(dir, &settings, path)?;
-    let path = placed.located.path;
-    if settings.kind_of(&placed.located.account, &placed.shown) != Some(Kind::Trash) {
-        bail!("{}", fill(t().delete_not_trash, &[&path]));
+pub fn delete(dir: &Path, mut paths: Vec<PathBuf>, stdin: bool) -> Result<()> {
+    if stdin {
+        for line in io::stdin().lock().lines() {
+            let line = line.context("reading the message files from stdin")?;
+            if !line.is_empty() {
+                paths.push(PathBuf::from(line));
+            }
+        }
     }
-    journal::record(dir, &path, placed.uidvalidity, Action::Discard)?;
-    println!("{}", fill(t().delete_done, &[&path]));
-    Ok(())
+    let settings = settings::load(dir)?;
+    let overlay = journal::overlay(dir, &settings)?;
+    let mut trashed = Vec::with_capacity(paths.len());
+    for path in &paths {
+        let Placed {
+            located,
+            uidvalidity,
+            shown,
+        } = Placed::find(dir, &settings, &overlay, path)?;
+        if settings.kind_of(&located.account, &shown) != Some(Kind::Trash) {
+            bail!("{}", fill(t().delete_not_trash, &[&located.path]));
+        }
+        trashed.push((located.path, uidvalidity));
+    }
+    journal::record_discards(dir, &trashed)?;
+    output::stdout(|out| {
+        trashed
+            .iter()
+            .try_for_each(|(path, _)| writeln!(out, "{}", fill(t().delete_done, &[path])))
+    })
 }
 
 fn missing(account: &str, target: &str) -> String {
@@ -339,32 +359,41 @@ mod tests {
         let trash = fixture.marked_folder("Trash", "trash");
         fixture.marked_folder("Bin", "trash");
         fs::write(trash.join("1.eml"), "Subject: old\r\n\r\nBye\r\n").unwrap();
+        fs::write(trash.join("2.eml"), "Subject: older\r\n\r\nBye\r\n").unwrap();
         fixture.sync().await;
         let settings = fixture.settings();
         let kinds = Kinds::of(settings.account("private").unwrap());
         assert_eq!(kinds.folder(Kind::Trash), Some("bin"));
         let inbox = store::index(&dir.join("private/inbox")).unwrap();
         let trashed = store::index(&dir.join("private/trash")).unwrap();
-        let (kept, old) = (
+        let (kept, old, older) = (
             store::relative(&inbox[&1], dir),
             store::relative(&trashed[&1], dir),
+            store::relative(&trashed[&2], dir),
         );
+        let hidden = |path: &str| journal::overlay(dir, &settings).unwrap().hides(path);
 
-        assert!(delete(dir, Path::new(&kept)).is_err());
-        delete(dir, Path::new(&old)).unwrap();
-        assert!(journal::overlay(dir, &settings).unwrap().hides(&old));
-        assert!(delete(dir, Path::new(&old)).is_err());
+        assert!(delete(dir, paths(&[&old, &kept]), false).is_err());
+        assert!(!hidden(&old));
+        delete(dir, paths(&[&old]), false).unwrap();
+        assert!(hidden(&old));
+        assert!(delete(dir, paths(&[&old]), false).is_err());
         assert!(run(dir, Path::new(&old), "inbox", false).is_err());
         run(dir, Path::new(&kept), "trash", false).unwrap();
         let (moved, _) = show::open(dir, &settings, Path::new(&kept)).unwrap();
         assert_eq!(moved.style, settings.style(Some(Kind::Trash)));
-        delete(dir, Path::new(&kept)).unwrap();
+        delete(dir, paths(&[&kept, &older]), false).unwrap();
+        assert!(hidden(&kept) && hidden(&older));
 
         let pushed = fixture.push().await;
-        assert_eq!((pushed.pushed, pushed.dropped.len()), (2, 0));
-        assert!(!trash.join("1.eml").exists());
+        assert_eq!((pushed.pushed, pushed.dropped.len()), (3, 0));
+        assert!(!trash.join("1.eml").exists() && !trash.join("2.eml").exists());
         assert!(!fixture.dev.join("private/INBOX/1,S.eml").exists());
-        assert!(!inbox[&1].exists() && !trashed[&1].exists());
+        assert!(!inbox[&1].exists() && !trashed[&1].exists() && !trashed[&2].exists());
         fs::remove_dir_all(&fixture.base).unwrap();
+    }
+
+    fn paths(paths: &[&str]) -> Vec<PathBuf> {
+        paths.iter().map(PathBuf::from).collect()
     }
 }
