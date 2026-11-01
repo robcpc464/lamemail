@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.10.0
 
 - The trash can be emptied: with the trash chosen in the top bar,
   "Empty trash" deletes all mail in it for good, with five seconds to
