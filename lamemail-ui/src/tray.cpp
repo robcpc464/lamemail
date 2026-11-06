@@ -1,6 +1,9 @@
 #include "tray.h"
 
 #include <QColor>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusServiceWatcher>
 #include <QImageReader>
 #include <QPainter>
 #include <QPointF>
@@ -11,6 +14,8 @@ constexpr qreal iconSide = 256;
 constexpr QPointF dotCenter(204, 60);
 constexpr qreal dotRadius = 44;
 constexpr qreal gapRadius = 62;
+
+const QString watcherService = QStringLiteral("org.kde.StatusNotifierWatcher");
 
 }
 
@@ -40,4 +45,27 @@ QImage TrayImages::requestImage(const QString& id, QSize* size, const QSize& req
     if (size)
         *size = image.size();
     return image;
+}
+
+TrayHost::TrayHost(QObject* parent)
+    : QObject(parent)
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    auto* watcher = new QDBusServiceWatcher(
+        watcherService, bus, QDBusServiceWatcher::WatchForOwnerChange, this);
+    connect(watcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
+        [this](const QString&, const QString&, const QString& owner) {
+            setPresent(!owner.isEmpty());
+        });
+    m_present = bus.interface()->isServiceRegistered(watcherService);
+}
+
+void TrayHost::setPresent(bool present)
+{
+    if (present == m_present)
+        return;
+    m_present = present;
+    emit presentChanged();
 }

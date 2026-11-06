@@ -2,6 +2,12 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- Started at login, lamemail stays in the tray again when the tray comes
+  up only after it, as with Omarchy 4.5; closing the window hides it there
+  again.
+
 ## 0.10.0
 
 - The trash can be emptied: with the trash chosen in the top bar,

@@ -43,6 +43,7 @@ Window {
 
     onViewChanged: if (root.view === "feed") list.forceActiveFocus()
     onActiveChanged: if (root.active) root.unnoticed = false
+    onToTrayChanged: if (root.toTray) trayWait.stop()
 
     function present() {
         root.show()
@@ -403,9 +404,13 @@ Window {
         onTriggered: feed.refreshTimes()
     }
 
+    TrayHost {
+        id: trayHost
+    }
+
     Instantiator {
         id: tray
-        active: Preferences.closeToTray
+        active: Preferences.closeToTray && trayHost.present
 
         Platform.SystemTrayIcon {
             visible: true
@@ -430,9 +435,17 @@ Window {
         }
     }
 
+    Timer {
+        id: trayWait
+        interval: 10000
+        onTriggered: root.show()
+    }
+
     Component.onCompleted: {
-        if (!root.startHidden || !root.toTray)
+        if (!root.startHidden || !Preferences.closeToTray)
             root.show()
+        else if (!root.toTray)
+            trayWait.start()
         Ai.reload()
         feed.reload()
         journal.reload()
