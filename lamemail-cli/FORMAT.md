@@ -826,7 +826,8 @@ lamemail ai set custom 'llm -m mistral'
 lamemail ai set custom
 lamemail ai show --json
 lamemail ai remove
-lamemail ai context-limit 50000
+lamemail ai context-limit 16384
+lamemail ai context-limit
 ```
 
 - `ai set` chooses what answers, kept in `settings.json` as `"ai"`; one
@@ -859,21 +860,27 @@ lamemail ai context-limit 50000
   posts the prompt to `/api/chat` without streaming: the context length
   (`num_ctx`) is the prompt's length at about three characters a token
   plus 2048 tokens for the answer, as the next power of two, at least
-  8192 and at most the model's own; a model that can think is asked not
+  8192 and at most the context window in force (below); a model that can
+  think is asked not
   to (`think: false`), and only the answer's `content` is taken. The
   answer may take up to three minutes; a refused connection, an error of
   the service (its `error`) or no answer in time ends the command with
   exit code 1. HTTP is lamemail's own, plain and on loopback only
   (`src/http.rs`)
-- `ai context-limit <chars>` sets how many characters of the context
-  folder's files the AI gets at most, one value for every account, kept as
-  `context_limit` in `settings.json`, outside `ai`, so removing the program
-  keeps it: 10000, 20000 (the default), 50000 or 100000, any other number
-  ends with exit code 1. A large value only helps a model with a large
-  context: Claude takes a lot, an ollama model gets a context sized to
-  the prompt, and a line such as `ollama run` keeps to ollama's default
-  context, often a few thousand tokens (about four characters each); a
-  large context needs memory on the graphics card
+- `ai context-limit <tokens>` sets the context window of the AI that is
+  on, how much the prompt and the answer of `ai suggest` may take
+  together; without `<tokens>` it goes back to the model's own. Unless
+  set, the window is the model's own: 200000 tokens for Claude Code, for
+  an ollama model what `/api/show` names, for a program of your own,
+  which lamemail cannot ask, 32768. It is kept per AI in `settings.json`
+  as `context_limits` (Claude Code, each ollama model and the own
+  command apart), so a small window for a local model leaves Claude's
+  as it is, and it stays when the AI is switched off or another chosen.
+  A value below 8192 or above the model's own ends with exit code 1, as
+  does `ai context-limit` without an AI on; for an ollama model the
+  service must answer. A smaller window makes an ollama model need less
+  memory on the graphics card; a line such as `ollama run` keeps to
+  ollama's default context, often a few thousand tokens, whatever is set
 - `ai show --json` prints `active`, what answers (`claude-code`,
   `ollama`, `custom` or null), `command`, the line that runs for it, or
   null, `ollama`, the model, or null, `custom`, the own command kept,
@@ -884,19 +891,22 @@ lamemail ai context-limit 50000
   ollama its service answers, for the others the same as `found`),
   `command`, the line that runs it without tools, and `ollama`, the
   model `ai set ollama` takes, each null when it does not apply:
-  `{"active":"ollama","command":null,"ollama":"gemma4:12b","custom":"llm -m mistral","programs":[{"program":"ollama","name":"ollama · gemma4:12b","url":"https://ollama.com","found":true,"running":true,"command":null,"ollama":"gemma4:12b"},{"program":"claude-code","name":"Claude Code","url":"https://claude.com/claude-code","found":true,"running":true,"command":"claude -p --tools \"\" --strict-mcp-config --output-format text","ollama":null}],"context_limit":20000,"context_limits":[10000,20000,50000,100000]}`.
+  `{"active":"ollama","command":null,"ollama":"gemma4:12b","custom":"llm -m mistral","programs":[{"program":"ollama","name":"ollama · gemma4:12b","url":"https://ollama.com","found":true,"running":true,"command":null,"ollama":"gemma4:12b"},{"program":"claude-code","name":"Claude Code","url":"https://claude.com/claude-code","found":true,"running":true,"command":"claude -p --tools \"\" --strict-mcp-config --output-format text","ollama":null}],"context_default":131072,"context_set":16384}`.
   `ollama` has one entry per model of its service (`/api/tags`), or one
   without a model when the service lists none or does not answer
   (`running` false, `found` then only when `ollama` is in the `PATH`);
   they come first, the local models before Claude Code.
   The known ones are Claude Code (`claude`, tools and MCP servers off)
-  and every model of the ollama service; Simon Willison's `llm` was listed
-  too until the user dropped it on 2026-10-04, a line for it still works
-  as a command. Others, such as the command lines of Grok and
-  Gemini, cannot take the prompt on stdin and run without tools from one
-  command line; they wait for the API backend. Codex looks able to but is
-  not listed before it has been tried. `context_limit` is the limit in
-  force, `context_limits` the values `ai context-limit` takes
+  and every model of the ollama service. A model in the cloud, such as
+  one of OpenAI, Gemini, Grok or Mistral, goes through a program of your
+  own such as Simon Willison's `llm` and its plugins, which keeps the
+  keys; the command lines of Grok and Gemini themselves cannot take the
+  prompt on stdin and run without tools from one command line. Codex
+  looks able to but is not listed before it has been tried.
+  `context_default` is the context window of the AI that is on while
+  none is set, in tokens (the model's own, or 32768), null without an AI
+  or while its ollama service does not answer; `context_set` the one `ai
+  context-limit` set for it, or null
 
 `lamemail account context <id> <dir>` sets what the AI knows about the
 user for the mail of that account: a folder of text files, such as a
@@ -908,10 +918,10 @@ request, so a changed price list counts at once: the files directly in
 the folder, not in subfolders, in the order of their names, without
 hidden ones (a leading dot) and without what is not UTF-8 text (PDFs,
 images); a symbolic link counts as the file it points to. Together the
-files get at most `ai context-limit` characters, 20,000 unless set: the
-file that crosses the limit is cut, the rest left out. A folder that cannot be read ends `ai suggest`
-with exit code 1. The AI gets the files with every mail of that
-account.
+files get what the context window leaves (see `ai context-limit` and
+below): the file that crosses that is cut, the rest left out. A folder
+that cannot be read ends `ai suggest` with exit code 1. The AI gets the
+files with every mail of that account.
 
 `lamemail ai suggest --reply <path>` drafts the text of a reply to the
 message at `path`, `lamemail ai suggest <id>` the text of a new mail of
@@ -977,6 +987,13 @@ mail, followed by that quote and signature. The prompt holds:
   instruction
 
 A new mail's prompt says "the mail" where a reply's says "the reply".
+
+The prompt and 2048 tokens for the answer fit the context window, at
+about three characters a token. When the parts above do not fit, the
+mail to answer keeps its length, and the context files, the earlier
+mails and the search hits are shortened alike, each by the same share of
+its length: the files cut as above, the oldest of the earlier mails left
+out, the last hits cut.
 
 When the mail needs a fact only the user knows (a name, a date, a
 price, a decision), the AI asks for it instead of guessing: its answer is
@@ -1077,7 +1094,7 @@ and neither does a folder that is not synchronized.
   "kind_styles": { "junk": { "icon": "mail", "dense": false } },
   "ai": { "ollama": "gemma4:12b" },
   "custom_command": "llm -m mistral",
-  "context_limit": 50000
+  "context_limits": { "ollama gemma4:12b": 16384 }
 }
 ```
 
@@ -1089,7 +1106,8 @@ Gmail), an account's `folders` by `account add`, a sync, `account
 folder` and `move` (the archive's folder of a year) (see "The folders of an account"). `ai` is what `ai set` chose, `"claude-code"`, `{"ollama": …}`
 or `"custom"`, absent until then or after `ai remove`, `custom_command`
 the own line of `ai set custom`, kept until another replaces it,
-`context_limit` the one of `ai context-limit`. `kind_styles` holds the
+`context_limits` the context windows `ai context-limit` set, keyed by the
+AI: `claude-code`, `custom` or `ollama <model>`. `kind_styles` holds the
 style properties set for a kind of folder, for all accounts at once; it
 is written by `lamemail folder set` and `folder reset` and absent until
 something is set. Only the

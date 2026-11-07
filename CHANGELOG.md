@@ -2,6 +2,16 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- The AI gets as much as its model takes: Claude Code 200,000 tokens,
+  an ollama model its own context window, in place of 20,000 characters
+  of the context folder. `lamemail ai context-limit <tokens>` sets a
+  smaller window for the AI that is on, such as for a local model on a
+  small graphics card; a prompt too long for it is shortened, the mail to
+  answer last. In the settings the context window stands under the model,
+  the model's own shown while none is set.
+
 ## 0.10.1
 
 - Started at login, lamemail stays in the tray again when the tray comes

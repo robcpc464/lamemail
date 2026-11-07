@@ -469,14 +469,14 @@ enum AiCommand {
     #[command(about = "Remove the program; no mail goes to an AI any more")]
     Remove,
     #[command(
-        about = "Set how many characters of the context folder's files the AI gets at most, the same for every account"
+        about = "Set the context window of the AI that is on, in tokens: how much the prompt with the context folder, the mails and the answer may take"
     )]
     ContextLimit {
         #[arg(
-            value_name = "CHARS",
-            help = "10000, 20000 (the default), 50000 or 100000; large values only help a model with a large context"
+            value_name = "TOKENS",
+            help = "At least 8192 and at most what the model takes; left out, the model's own (Claude Code 200000, an ollama model its own, an own command 32768)"
         )]
-        chars: usize,
+        tokens: Option<u64>,
     },
     #[command(
         about = "Draft or revise the text of a new mail or a reply with the AI that is set: the instruction comes from stdin, the whole text goes to stdout; nothing is noted or sent"
@@ -736,7 +736,7 @@ async fn run(cli: Cli) -> Result<()> {
             },
             AiCommand::Show { json } => ai::show(&dir, json),
             AiCommand::Remove => ai::remove(&dir),
-            AiCommand::ContextLimit { chars } => ai::set_context_limit(&dir, chars),
+            AiCommand::ContextLimit { tokens } => ai::set_context_limit(&dir, tokens),
             AiCommand::Suggest {
                 id,
                 reply,

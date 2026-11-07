@@ -71,7 +71,7 @@ struct ContextFile {
     state: ContextState,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum ContextState {
     Read,
@@ -82,10 +82,27 @@ enum ContextState {
     Folder,
 }
 
-#[derive(Default)]
-struct ContextFolder {
-    blocks: Vec<String>,
-    files: Vec<ContextFile>,
+struct Stored {
+    name: String,
+    state: ContextState,
+    text: String,
+}
+
+struct Parts<'a> {
+    answered: Option<&'a Message>,
+    history: &'a [Entry],
+    found: &'a [Message],
+    context: Option<&'a [Stored]>,
+    place: &'a Place<'a>,
+    instruction: &'a str,
+}
+
+struct Drawn<'a> {
+    prompt: String,
+    sizes: [usize; 4],
+    earlier: Vec<&'a Message>,
+    hits: Vec<(&'a Message, String)>,
+    context: Option<Vec<ContextFile>>,
 }
 
 pub enum Target<'a> {
@@ -139,6 +156,8 @@ fn suggest(dir: &Path, target: &Target, request: &Request, instruction: &str) ->
     let cc = parse(&request.cc)?;
     let settings = settings::load(dir)?;
     let ai = ai::chosen(&settings)?;
+    let limit = ai::context_limit(&settings, &ai)?;
+    let room = ai::room(limit);
     let (account, answered, me) = match target {
         Target::Reply(path) => {
             let (message, me) = show::open(dir, &settings, path)?;
@@ -149,12 +168,8 @@ fn suggest(dir: &Path, target: &Target, request: &Request, instruction: &str) ->
             (id.to_string(), None, show::identities(dir, &settings, id)?)
         }
     };
-    let context = match &settings.account(&account)?.context_folder {
-        Some(folder) => Some(context_files(
-            &account,
-            folder,
-            ai::context_limit(&settings),
-        )?),
+    let stored = match &settings.account(&account)?.context_folder {
+        Some(folder) => Some(context_files(&account, folder, room)?),
         None => None,
     };
     let (after, closing) = reply::closing(&request.after);
@@ -179,11 +194,11 @@ fn suggest(dir: &Path, target: &Target, request: &Request, instruction: &str) ->
         Target::New(_) if readers.is_empty() => Vec::new(),
         Target::New(id) => thread::entries_with(dir, &settings, id, &readers)?,
     };
-    let earlier = earlier(answered.as_ref(), &history);
+    let (earlier, _) = earlier(answered.as_ref(), &history, HISTORY_CHARS);
     let searches = if instruction.trim().is_empty() || readers.is_empty() {
         Vec::new()
     } else {
-        searches(&ai, answered.as_ref(), &place, instruction.trim())?
+        searches(&ai, limit, answered.as_ref(), &place, instruction.trim())?
     };
     let found = if searches.is_empty() {
         Vec::new()
@@ -197,31 +212,79 @@ fn suggest(dir: &Path, target: &Target, request: &Request, instruction: &str) ->
             .collect();
         found(dir, &settings, &account, &readers, &searches, &seen)?
     };
-    let (blocks, context) = match context {
-        Some(ContextFolder { blocks, files }) => (blocks, Some(files)),
-        None => (Vec::new(), None),
-    };
-    let hits = hits(&found);
-    let prompt = prompt(
-        answered.as_ref(),
-        &earlier,
-        &hits,
-        &blocks,
-        &place,
+    let parts = Parts {
+        answered: answered.as_ref(),
+        history: &history,
+        found: &found,
+        context: stored.as_deref(),
+        place: &place,
         instruction,
-    );
-    let answer = ai::ask(&ai, &prompt)?;
+    };
+    let drawn = parts.fitted(room);
+    let answer = ai::ask(&ai, &drawn.prompt, limit)?;
     let question = question(&answer);
     Ok(Suggested {
         account,
-        path: answered.map(|message| message.path),
+        path: answered.as_ref().map(|message| message.path.clone()),
         text: question.is_none().then(|| closed(&answer, closing)),
         question,
-        context,
+        context: drawn.context,
         searches: searches.iter().map(|words| words.join(" ")).collect(),
-        found: hits.iter().map(|(hit, _)| Used::of(hit)).collect(),
-        earlier: earlier.iter().map(|other| Used::of(other)).collect(),
+        found: drawn.hits.iter().map(|(hit, _)| Used::of(hit)).collect(),
+        earlier: drawn.earlier.iter().map(|other| Used::of(other)).collect(),
     })
+}
+
+impl<'a> Parts<'a> {
+    fn fitted(&self, room: usize) -> Drawn<'a> {
+        let drawn = self.drawn([MAIL_CHARS, HISTORY_CHARS, FOUND_CHARS, room]);
+        let length = drawn.prompt.chars().count();
+        let parts: usize = drawn.sizes.iter().sum();
+        if length <= room || parts == 0 {
+            return drawn;
+        }
+        let [body, history, found, context] = drawn.sizes;
+        let left = room.saturating_sub(length.saturating_sub(parts));
+        let body = body.min(left);
+        let others = history + found + context;
+        let share = |size: usize| (size * (left - body)).checked_div(others).unwrap_or(0);
+        self.drawn([body, share(history), share(found), share(context)])
+    }
+
+    fn drawn(&self, shares: [usize; 4]) -> Drawn<'a> {
+        let [body_share, history_share, found_share, context_share] = shares;
+        let body = self.answered.map(|message| cut(&message.body, body_share));
+        let (earlier, history_size) = earlier(self.answered, self.history, history_share);
+        let hits = hits(self.found, found_share);
+        let (blocks, files, context_size) = match self.context {
+            Some(stored) => {
+                let (blocks, files, size) = within(stored, context_share);
+                (blocks, Some(files), size)
+            }
+            None => (Vec::new(), None, 0),
+        };
+        let sizes = [
+            body.as_deref().map_or(0, |body| body.chars().count()),
+            history_size,
+            hits.iter().map(|(_, text)| text.chars().count()).sum(),
+            context_size,
+        ];
+        let prompt = prompt(
+            self.answered.zip(body.as_deref()),
+            &earlier,
+            &hits,
+            &blocks,
+            self.place,
+            self.instruction,
+        );
+        Drawn {
+            prompt,
+            sizes,
+            earlier,
+            hits,
+            context: files,
+        }
+    }
 }
 
 fn noun(answering: bool) -> &'static str {
@@ -238,8 +301,7 @@ fn worded(text: &str, answering: bool) -> String {
         .replace("{reply}", noun(answering))
 }
 
-fn hits(found: &[Message]) -> Vec<(&Message, String)> {
-    let mut budget = FOUND_CHARS;
+fn hits(found: &[Message], mut budget: usize) -> Vec<(&Message, String)> {
     let mut hits = Vec::new();
     for hit in found.iter().take(FOUND_MAILS) {
         if budget == 0 {
@@ -269,7 +331,11 @@ fn closed(text: &str, closing: &str) -> String {
     }
 }
 
-fn earlier<'a>(answered: Option<&Message>, history: &'a [Entry]) -> Vec<&'a Message> {
+fn earlier<'a>(
+    answered: Option<&Message>,
+    history: &'a [Entry],
+    budget: usize,
+) -> (Vec<&'a Message>, usize) {
     let others = history
         .iter()
         .rev()
@@ -280,18 +346,18 @@ fn earlier<'a>(answered: Option<&Message>, history: &'a [Entry]) -> Vec<&'a Mess
                     && (other.message_id.is_none() || other.message_id != message.message_id)
             })
         });
-    let mut budget = HISTORY_CHARS;
+    let mut left = budget;
     let mut kept = Vec::new();
     for other in others {
         let size = mail(other, &other.text).chars().count();
-        if size > budget {
+        if size > left {
             break;
         }
-        budget -= size;
+        left -= size;
         kept.push(other);
     }
     kept.reverse();
-    kept
+    (kept, budget - left)
 }
 
 fn readers(place: &Place, mine: &BTreeSet<String>) -> BTreeSet<String> {
@@ -303,6 +369,7 @@ fn readers(place: &Place, mine: &BTreeSet<String>) -> BTreeSet<String> {
 
 fn searches(
     ai: &ai::Chosen,
+    limit: u64,
     answered: Option<&Message>,
     place: &Place,
     instruction: &str,
@@ -316,7 +383,7 @@ fn searches(
     }
     prompt += &subject_line(place.subject, reply);
     prompt += &format!("The user's instruction for the {reply}:\n{instruction}\n");
-    let answer = ai::ask(ai, &prompt)?;
+    let answer = ai::ask(ai, &prompt, limit)?;
     Ok(answer
         .lines()
         .filter_map(|line| {
@@ -389,7 +456,7 @@ fn subject_line(subject: &str, reply: &str) -> String {
 }
 
 fn prompt(
-    answered: Option<&Message>,
+    answered: Option<(&Message, &str)>,
     earlier: &[&Message],
     hits: &[(&Message, String)],
     context: &[String],
@@ -428,9 +495,9 @@ fn prompt(
             .for_each(|(hit, text)| prompt += &mail(hit, text));
         prompt += "\n";
     }
-    if let Some(message) = answered {
+    if let Some((message, body)) = answered {
         prompt += "The mail to answer:\n";
-        prompt += &mail(message, &cut(&message.body, MAIL_CHARS));
+        prompt += &mail(message, body);
         prompt += "\n";
     }
     if let Some(from) = &place.from {
@@ -482,7 +549,7 @@ fn mail(message: &Message, text: &str) -> String {
     )
 }
 
-fn context_files(id: &str, folder: &Path, limit: usize) -> Result<ContextFolder> {
+fn context_files(id: &str, folder: &Path, most: usize) -> Result<Vec<Stored>> {
     let entries = fs::read_dir(folder)
         .with_context(|| fill(t().context_folder_unreadable, &[&id, &folder.display()]))?;
     let mut paths: Vec<_> = entries
@@ -490,39 +557,62 @@ fn context_files(id: &str, folder: &Path, limit: usize) -> Result<ContextFolder>
         .filter(|path| !hidden(path))
         .collect();
     paths.sort();
-    let mut budget = limit;
-    let mut context = ContextFolder::default();
+    let mut left = most;
+    let mut stored = Vec::new();
     for path in paths {
         let name = path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let state = if !path.is_file() {
-            ContextState::Folder
-        } else if budget == 0 {
-            ContextState::Limit
+        let (state, text) = if !path.is_file() {
+            (ContextState::Folder, String::new())
+        } else if left == 0 {
+            (ContextState::Limit, String::new())
         } else {
-            match text_file(&path, limit).map(|text| text.trim().to_string()) {
-                None => ContextState::NotText,
-                Some(text) if text.is_empty() => ContextState::Empty,
+            match text_file(&path, left).map(|text| text.trim().to_string()) {
+                None => (ContextState::NotText, String::new()),
+                Some(text) if text.is_empty() => (ContextState::Empty, text),
                 Some(text) => {
-                    let kept = cut(&text, budget);
-                    budget = budget.saturating_sub(kept.chars().count());
-                    context
-                        .blocks
-                        .push(format!("<file name={name:?}>\n{}\n</file>", data(&kept)));
-                    if kept == text {
-                        ContextState::Read
-                    } else {
-                        ContextState::Cut
-                    }
+                    left = left.saturating_sub(text.chars().count());
+                    (ContextState::Read, text)
                 }
             }
         };
-        context.files.push(ContextFile { name, state });
+        stored.push(Stored { name, state, text });
     }
-    Ok(context)
+    Ok(stored)
+}
+
+fn within(stored: &[Stored], budget: usize) -> (Vec<String>, Vec<ContextFile>, usize) {
+    let mut left = budget;
+    let mut blocks = Vec::new();
+    let mut files = Vec::new();
+    for file in stored {
+        let state = match file.state {
+            ContextState::Read if left == 0 => ContextState::Limit,
+            ContextState::Read => {
+                let kept = cut(&file.text, left);
+                left = left.saturating_sub(kept.chars().count());
+                blocks.push(format!(
+                    "<file name={:?}>\n{}\n</file>",
+                    file.name,
+                    data(&kept)
+                ));
+                if kept == file.text {
+                    ContextState::Read
+                } else {
+                    ContextState::Cut
+                }
+            }
+            state => state,
+        };
+        files.push(ContextFile {
+            name: file.name.clone(),
+            state,
+        });
+    }
+    (blocks, files, budget - left)
 }
 
 fn hidden(path: &Path) -> bool {
@@ -888,6 +978,49 @@ mod tests {
         fs::remove_dir_all(&fixture.base).unwrap();
     }
 
+    #[tokio::test]
+    async fn a_small_context_limit_cuts_the_context_and_keeps_the_mail_to_answer() {
+        let mut fixture = Fixture::new("suggest-limit");
+        let dir = fixture.dir.clone();
+        let folder = fixture.base.join("context");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("prices.md"), "x".repeat(40_000)).unwrap();
+        fixture.account.context_folder = Some(folder);
+        fixture.config.ai = Some(Ai::Custom);
+        fixture.config.custom_command = Some("cat".to_string());
+        fixture.save();
+        fixture.sync().await;
+        let inbox = store::index(&dir.join("private/inbox")).unwrap();
+        let path = store::relative(&inbox[&1], &dir);
+        let reply = Target::Reply(Path::new(&path));
+        let request = Request {
+            to: Vec::new(),
+            cc: Vec::new(),
+            subject: String::new(),
+            before: String::new(),
+            after: String::new(),
+            no_questions: false,
+        };
+        let state = |suggested: &Suggested| suggested.context.as_ref().unwrap()[0].state;
+
+        let whole = suggest(&dir, &reply, &request, "").unwrap();
+        assert_eq!(state(&whole), ContextState::Read);
+        assert!(whole.text.unwrap().contains(&"x".repeat(40_000)));
+
+        fixture
+            .config
+            .context_limits
+            .insert("custom".to_string(), 8192);
+        fixture.save();
+        let small = suggest(&dir, &reply, &request, "").unwrap();
+        assert_eq!(state(&small), ContextState::Cut);
+        let text = small.text.unwrap();
+        assert!(text.chars().count() <= ai::room(8192));
+        assert!(text.contains("please find the offer attached."));
+        assert!(text.contains("x […]\n</file>"));
+        fs::remove_dir_all(&fixture.base).unwrap();
+    }
+
     #[test]
     fn the_context_files_share_a_budget_and_a_file_read_in_part_ends_at_a_whole_character() {
         let folder = std::env::temp_dir().join(format!("lamemail-context-{}", std::process::id()));
@@ -895,8 +1028,9 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("a.txt"), format!("x{}", "ä".repeat(50_000))).unwrap();
         fs::write(folder.join("b.txt"), "left out").unwrap();
-        let context = context_files("private", &folder, 10_000).unwrap();
-        let files = context.blocks;
+        let stored = context_files("private", &folder, 10_000).unwrap();
+        let (files, states, size) = within(&stored, 10_000);
+        assert_eq!(size, 10_000);
         assert_eq!(files.len(), 1);
         assert!(files[0].starts_with("<file name=\"a.txt\">\nxä"));
         assert!(files[0].ends_with("ä […]\n</file>"));
@@ -906,7 +1040,7 @@ mod tests {
             state,
         };
         assert_eq!(
-            context.files,
+            states,
             [
                 state("a.txt", ContextState::Cut),
                 state("b.txt", ContextState::Limit)

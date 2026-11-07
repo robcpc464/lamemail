@@ -199,8 +199,8 @@ struct Texts {
     const char* contextHint;
     const char* contextNone;
     const char* contextChoose;
-    const char* contextLimit;
-    const char* contextLimitHint;
+    const char* contextWindow;
+    const char* contextWindowHint;
     const char* aiSection;
     const char* aiHint;
     const char* aiModel;
@@ -358,8 +358,8 @@ class Strings : public QObject {
     Q_PROPERTY(QString contextHint READ contextHint CONSTANT)
     Q_PROPERTY(QString contextNone READ contextNone CONSTANT)
     Q_PROPERTY(QString contextChoose READ contextChoose CONSTANT)
-    Q_PROPERTY(QString contextLimit READ contextLimit CONSTANT)
-    Q_PROPERTY(QString contextLimitHint READ contextLimitHint CONSTANT)
+    Q_PROPERTY(QString contextWindow READ contextWindow CONSTANT)
+    Q_PROPERTY(QString contextWindowHint READ contextWindowHint CONSTANT)
     Q_PROPERTY(QString aiSection READ aiSection CONSTANT)
     Q_PROPERTY(QString aiHint READ aiHint CONSTANT)
     Q_PROPERTY(QString aiModel READ aiModel CONSTANT)
@@ -567,8 +567,8 @@ public:
     QString contextHint() const { return QString::fromUtf8(texts().contextHint); }
     QString contextNone() const { return QString::fromUtf8(texts().contextNone); }
     QString contextChoose() const { return QString::fromUtf8(texts().contextChoose); }
-    QString contextLimit() const { return QString::fromUtf8(texts().contextLimit); }
-    QString contextLimitHint() const { return QString::fromUtf8(texts().contextLimitHint); }
+    QString contextWindow() const { return QString::fromUtf8(texts().contextWindow); }
+    QString contextWindowHint() const { return QString::fromUtf8(texts().contextWindowHint); }
     QString aiSection() const { return QString::fromUtf8(texts().aiSection); }
     QString aiHint() const { return QString::fromUtf8(texts().aiHint); }
     QString aiModel() const { return QString::fromUtf8(texts().aiModel); }

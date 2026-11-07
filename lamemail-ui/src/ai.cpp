@@ -49,9 +49,12 @@ void Ai::choose(const QString& choice, const QString& value)
 
 void Ai::remove() { change({ QStringLiteral("ai"), QStringLiteral("remove") }); }
 
-void Ai::setContextLimit(int chars)
+void Ai::setContextLimit(const QString& tokens)
 {
-    change({ QStringLiteral("ai"), QStringLiteral("context-limit"), QString::number(chars) });
+    QStringList command { QStringLiteral("ai"), QStringLiteral("context-limit") };
+    if (!tokens.trimmed().isEmpty())
+        command << tokens.trimmed();
+    change(command);
 }
 
 void Ai::change(const QStringList& command)

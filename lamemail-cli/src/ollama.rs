@@ -4,14 +4,12 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
+use crate::ai::{ANSWER_TOKENS, CHARS_PER_TOKEN, SMALLEST_LIMIT};
 use crate::http;
 use crate::i18n::{fill, t};
 
 pub const ADDRESS: &str = "127.0.0.1:11434";
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
-const ANSWER_TOKENS: u64 = 2048;
-const CHARS_PER_TOKEN: u64 = 3;
-const SMALLEST_CONTEXT: u64 = 8192;
 
 pub fn models(address: &str) -> Option<Vec<String>> {
     let response = http::get(address, "/api/tags", LOOKUP_TIMEOUT).ok()?;
@@ -30,18 +28,24 @@ pub fn short_name(model: &str) -> &str {
     model.trim().trim_end_matches(":latest")
 }
 
-pub fn ask(address: &str, model: &str, prompt: &str, timeout: Duration) -> Result<String> {
-    let shown = call(
-        address,
-        "/api/show",
-        &json!({ "model": model }),
-        LOOKUP_TIMEOUT,
-    )?;
+pub fn longest(address: &str, model: &str) -> Result<Option<u64>> {
+    Ok(longest_context(&shown(address, model)?))
+}
+
+pub fn ask(
+    address: &str,
+    model: &str,
+    prompt: &str,
+    limit: u64,
+    timeout: Duration,
+) -> Result<String> {
+    let shown = shown(address, model)?;
+    let most = longest_context(&shown).map_or(limit, |longest| longest.min(limit));
     let mut request = json!({
         "model": model,
         "messages": [{ "role": "user", "content": prompt }],
         "stream": false,
-        "options": { "num_ctx": context_length(prompt, longest_context(&shown)) },
+        "options": { "num_ctx": context_length(prompt, most) },
     });
     if thinks(&shown) {
         request["think"] = json!(false);
@@ -51,6 +55,15 @@ pub fn ask(address: &str, model: &str, prompt: &str, timeout: Duration) -> Resul
         .as_str()
         .map(str::to_string)
         .context(t().ai_empty)
+}
+
+fn shown(address: &str, model: &str) -> Result<Value> {
+    call(
+        address,
+        "/api/show",
+        &json!({ "model": model }),
+        LOOKUP_TIMEOUT,
+    )
 }
 
 fn call(address: &str, path: &str, request: &Value, timeout: Duration) -> Result<Value> {
@@ -102,10 +115,9 @@ fn thinks(shown: &Value) -> bool {
         })
 }
 
-fn context_length(prompt: &str, longest: Option<u64>) -> u64 {
+fn context_length(prompt: &str, most: u64) -> u64 {
     let needed = prompt.chars().count() as u64 / CHARS_PER_TOKEN + ANSWER_TOKENS;
-    let length = needed.next_power_of_two().max(SMALLEST_CONTEXT);
-    longest.map_or(length, |longest| length.min(longest))
+    needed.next_power_of_two().max(SMALLEST_LIMIT).min(most)
 }
 
 #[cfg(test)]
@@ -143,7 +155,14 @@ mod tests {
         });
         let prompt = "x".repeat(60_000);
         assert_eq!(
-            ask(&address, "gemma4:12b", &prompt, Duration::from_secs(5)).unwrap(),
+            ask(
+                &address,
+                "gemma4:12b",
+                &prompt,
+                200_000,
+                Duration::from_secs(5)
+            )
+            .unwrap(),
             "Hallo Jane"
         );
         let show = served.recv().unwrap();
@@ -166,13 +185,13 @@ mod tests {
             _ => (200, r#"{"message":{"content":"Ja"}}"#.to_string()),
         });
         assert_eq!(
-            ask(&address, "llama3.2", "Hi", Duration::from_secs(5)).unwrap(),
+            ask(&address, "llama3.2", "Hi", 200_000, Duration::from_secs(5)).unwrap(),
             "Ja"
         );
         served.recv().unwrap();
         let request: Value = serde_json::from_str(&served.recv().unwrap().body).unwrap();
         assert!(request.get("think").is_none());
-        assert_eq!(request["options"]["num_ctx"], SMALLEST_CONTEXT);
+        assert_eq!(request["options"]["num_ctx"], SMALLEST_LIMIT);
     }
 
     #[test]
@@ -180,7 +199,7 @@ mod tests {
         let (address, _) =
             http_server(|_| (404, r#"{"error":"model 'nope' not found"}"#.to_string()));
         assert_eq!(
-            ask(&address, "nope", "Hi", Duration::from_secs(5))
+            ask(&address, "nope", "Hi", 200_000, Duration::from_secs(5))
                 .unwrap_err()
                 .to_string(),
             fill(t().ai_ollama_failed, &[&"model 'nope' not found"])
@@ -190,14 +209,14 @@ mod tests {
             _ => (200, r#"{"done":true}"#.to_string()),
         });
         assert_eq!(
-            ask(&silent, "gemma4:12b", "Hi", Duration::from_secs(5))
+            ask(&silent, "gemma4:12b", "Hi", 200_000, Duration::from_secs(5))
                 .unwrap_err()
                 .to_string(),
             t().ai_empty
         );
         let closed = closed_address();
         assert_eq!(
-            ask(&closed, "gemma4:12b", "Hi", Duration::from_secs(5))
+            ask(&closed, "gemma4:12b", "Hi", 200_000, Duration::from_secs(5))
                 .unwrap_err()
                 .to_string(),
             fill(t().ai_ollama_offline, &[&closed])
@@ -205,10 +224,39 @@ mod tests {
     }
 
     #[test]
-    fn the_context_grows_in_powers_of_two_up_to_the_model_s_limit() {
-        assert_eq!(context_length("", None), 8192);
-        assert_eq!(context_length(&"x".repeat(30_000), None), 16_384);
-        assert_eq!(context_length(&"x".repeat(100_000), None), 65_536);
-        assert_eq!(context_length(&"x".repeat(100_000), Some(32_768)), 32_768);
+    fn the_context_grows_in_powers_of_two_up_to_the_limit() {
+        assert_eq!(context_length("", u64::MAX), 8192);
+        assert_eq!(context_length(&"x".repeat(30_000), u64::MAX), 16_384);
+        assert_eq!(context_length(&"x".repeat(100_000), u64::MAX), 65_536);
+        assert_eq!(context_length(&"x".repeat(100_000), 32_768), 32_768);
+        assert_eq!(context_length(&"x".repeat(100_000), 40_000), 40_000);
+    }
+
+    #[test]
+    fn the_limit_set_caps_the_context_below_the_model_s_and_the_model_names_its_own() {
+        let (address, served) = http_server(|path| match path {
+            "/api/show" => (
+                200,
+                r#"{"capabilities":["completion"],"model_info":{"qwen3.context_length":131072}}"#
+                    .to_string(),
+            ),
+            _ => (200, r#"{"message":{"content":"Ja"}}"#.to_string()),
+        });
+        assert_eq!(longest(&address, "qwen3:8b").unwrap(), Some(131_072));
+        served.recv().unwrap();
+        let prompt = "x".repeat(60_000);
+        ask(
+            &address,
+            "qwen3:8b",
+            &prompt,
+            20_000,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        served.recv().unwrap();
+        let request: Value = serde_json::from_str(&served.recv().unwrap().body).unwrap();
+        assert_eq!(request["options"]["num_ctx"], 20_000);
+        let (unknown, _) = http_server(|_| (200, "{}".to_string()));
+        assert_eq!(longest(&unknown, "qwen3:8b").unwrap(), None);
     }
 }

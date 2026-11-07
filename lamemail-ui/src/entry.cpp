@@ -335,8 +335,8 @@ std::optional<AiSetup> aiSetupFromJson(const QByteArray& line, QString* error)
         .ollama = json.value(QLatin1String("ollama")).toString(),
         .custom = json.value(QLatin1String("custom")).toString(),
         .programs = { },
-        .contextLimit = json.value(QLatin1String("context_limit")).toInt(),
-        .contextLimits = json.value(QLatin1String("context_limits")).toArray().toVariantList(),
+        .contextDefault = json.value(QLatin1String("context_default")).toInt(),
+        .contextSet = json.value(QLatin1String("context_set")).toInt(),
     };
     for (const QJsonValue& value : json.value(QLatin1String("programs")).toArray()) {
         const QJsonObject program = value.toObject();

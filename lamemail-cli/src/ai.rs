@@ -17,8 +17,11 @@ const CLAUDE: &str = r#"claude -p --tools "" --strict-mcp-config --output-format
 const CLAUDE_URL: &str = "https://claude.com/claude-code";
 const OLLAMA_URL: &str = "https://ollama.com";
 const TIMEOUT: Duration = Duration::from_secs(180);
-const CONTEXT_LIMITS: [usize; 4] = [10_000, 20_000, 50_000, 100_000];
-const CONTEXT_LIMIT: usize = 20_000;
+pub const CHARS_PER_TOKEN: u64 = 3;
+pub const ANSWER_TOKENS: u64 = 2048;
+pub const SMALLEST_LIMIT: u64 = 8192;
+const CLAUDE_LIMIT: u64 = 200_000;
+const OWN_LIMIT: u64 = 32_768;
 
 #[derive(Serialize)]
 struct Shown<'a> {
@@ -27,8 +30,8 @@ struct Shown<'a> {
     ollama: Option<&'a str>,
     custom: Option<&'a str>,
     programs: Vec<Program>,
-    context_limit: usize,
-    context_limits: [usize; 4],
+    context_default: Option<u64>,
+    context_set: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -135,20 +138,74 @@ fn described(settings: &Settings) -> String {
     }
 }
 
-pub fn set_context_limit(dir: &Path, chars: usize) -> Result<()> {
-    if !CONTEXT_LIMITS.contains(&chars) {
-        let limits = CONTEXT_LIMITS.map(|limit| limit.to_string()).join(", ");
-        bail!("{}", fill(t().ai_context_limits, &[&limits]));
+fn key(ai: &Ai) -> String {
+    match ai {
+        Ai::Ollama(model) => format!("ollama {model}"),
+        other => active(other).to_string(),
     }
-    let mut settings = settings::load(dir)?;
-    settings.context_limit = Some(chars);
-    settings::save(dir, &settings)?;
-    println!("{}", fill(t().ai_context_limit, &[&chars]));
-    Ok(())
 }
 
-pub fn context_limit(settings: &Settings) -> usize {
-    settings.context_limit.unwrap_or(CONTEXT_LIMIT)
+fn stored_limit(settings: &Settings) -> Option<u64> {
+    let ai = settings.ai.as_ref()?;
+    settings.context_limits.get(&key(ai)).copied()
+}
+
+fn model_limit(chosen: &Chosen, ollama_address: &str) -> Result<Option<u64>> {
+    match chosen {
+        Chosen::Program(CLAUDE) => Ok(Some(CLAUDE_LIMIT)),
+        Chosen::Program(_) => Ok(None),
+        Chosen::Ollama(model) => ollama::longest(ollama_address, model),
+    }
+}
+
+pub fn context_limit(settings: &Settings, chosen: &Chosen) -> Result<u64> {
+    limit_at(settings, chosen, ollama::ADDRESS)
+}
+
+fn default_limit(chosen: &Chosen, ollama_address: &str) -> Result<u64> {
+    Ok(model_limit(chosen, ollama_address)?.unwrap_or(OWN_LIMIT))
+}
+
+fn limit_at(settings: &Settings, chosen: &Chosen, ollama_address: &str) -> Result<u64> {
+    match stored_limit(settings) {
+        Some(set) => Ok(set),
+        None => default_limit(chosen, ollama_address),
+    }
+}
+
+pub fn room(limit: u64) -> usize {
+    (limit.saturating_sub(ANSWER_TOKENS) * CHARS_PER_TOKEN) as usize
+}
+
+pub fn set_context_limit(dir: &Path, tokens: Option<u64>) -> Result<()> {
+    limit_context(dir, tokens, ollama::ADDRESS)
+}
+
+fn limit_context(dir: &Path, tokens: Option<u64>, ollama_address: &str) -> Result<()> {
+    let mut settings = settings::load(dir)?;
+    let key = key(settings.ai.as_ref().context(t().ai_none)?);
+    let model = model_limit(&chosen(&settings)?, ollama_address)?;
+    match tokens {
+        Some(tokens) => {
+            if tokens < SMALLEST_LIMIT || model.is_some_and(|most| tokens > most) {
+                bail!(
+                    "{}",
+                    match model {
+                        Some(most) => fill(t().ai_context_range, &[&SMALLEST_LIMIT, &most]),
+                        None => fill(t().ai_context_least, &[&SMALLEST_LIMIT]),
+                    }
+                );
+            }
+            settings.context_limits.insert(key, tokens);
+        }
+        None => {
+            settings.context_limits.remove(&key);
+        }
+    }
+    settings::save(dir, &settings)?;
+    let limit = tokens.or(model).unwrap_or(OWN_LIMIT);
+    println!("{}", fill(t().ai_context_limit, &[&limit]));
+    Ok(())
 }
 
 pub fn remove(dir: &Path) -> Result<()> {
@@ -162,6 +219,10 @@ pub fn remove(dir: &Path) -> Result<()> {
 pub fn show(dir: &Path, json: bool) -> Result<()> {
     let settings = settings::load(dir)?;
     let chosen = chosen(&settings).ok();
+    let default = chosen
+        .as_ref()
+        .and_then(|chosen| default_limit(chosen, ollama::ADDRESS).ok());
+    let set = stored_limit(&settings);
     let shown = Shown {
         active: settings.ai.as_ref().map(active),
         command: match chosen {
@@ -174,20 +235,19 @@ pub fn show(dir: &Path, json: bool) -> Result<()> {
         },
         custom: custom(&settings),
         programs: programs(&search_path(), ollama::ADDRESS),
-        context_limit: context_limit(&settings),
-        context_limits: CONTEXT_LIMITS,
+        context_default: default,
+        context_set: set,
     };
     output::stdout(|out| {
         if json {
             return output::json_line(out, &shown);
         }
-        writeln!(
-            out,
-            "{}",
-            fill(t().ai_context_limit, &[&shown.context_limit])
-        )?;
         if settings.ai.is_some() {
-            return writeln!(out, "{}", fill(t().ai_shown, &[&described(&settings)]));
+            writeln!(out, "{}", fill(t().ai_shown, &[&described(&settings)]))?;
+            if let Some(limit) = set.or(default) {
+                writeln!(out, "{}", fill(t().ai_context_limit, &[&limit]))?;
+            }
+            return Ok(());
         }
         writeln!(out, "{}", t().ai_none)?;
         for known in &shown.programs {
@@ -206,14 +266,14 @@ pub fn show(dir: &Path, json: bool) -> Result<()> {
     })
 }
 
-pub fn ask(chosen: &Chosen, prompt: &str) -> Result<String> {
-    ask_within(chosen, prompt, TIMEOUT)
+pub fn ask(chosen: &Chosen, prompt: &str, limit: u64) -> Result<String> {
+    ask_within(chosen, prompt, limit, TIMEOUT)
 }
 
-fn ask_within(chosen: &Chosen, prompt: &str, timeout: Duration) -> Result<String> {
+fn ask_within(chosen: &Chosen, prompt: &str, limit: u64, timeout: Duration) -> Result<String> {
     let answer = match chosen {
         Chosen::Program(line) => run(&words(line)?, prompt, timeout)?,
-        Chosen::Ollama(model) => ollama::ask(ollama::ADDRESS, model, prompt, timeout)?,
+        Chosen::Ollama(model) => ollama::ask(ollama::ADDRESS, model, prompt, limit, timeout)?,
     };
     let answer = answer.trim();
     if answer.is_empty() {
@@ -442,21 +502,65 @@ mod tests {
     }
 
     #[test]
-    fn the_context_limit_is_one_of_the_steps_and_twenty_thousand_until_set() {
+    fn the_context_limit_is_the_model_s_until_one_is_set_for_that_ai() {
         let dir = std::env::temp_dir().join(format!("lamemail-ai-limit-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
         settings::init(&dir).unwrap();
-        assert_eq!(context_limit(&settings::load(&dir).unwrap()), 20_000);
-        let refused = set_context_limit(&dir, 30_000).unwrap_err().to_string();
+        let (service, _) = http_server(|path| match path {
+            "/api/tags" => (200, r#"{"models":[{"name":"gemma4:12b"}]}"#.to_string()),
+            _ => (
+                200,
+                r#"{"model_info":{"gemma3.context_length":131072}}"#.to_string(),
+            ),
+        });
+        let limit = || {
+            let settings = settings::load(&dir).unwrap();
+            limit_at(&settings, &chosen(&settings).unwrap(), &service).unwrap()
+        };
         assert_eq!(
-            refused,
-            fill(t().ai_context_limits, &[&"10000, 20000, 50000, 100000"])
+            limit_context(&dir, Some(50_000), &service)
+                .unwrap_err()
+                .to_string(),
+            t().ai_none
         );
-        set_context_limit(&dir, 50_000).unwrap();
-        let settings = settings::load(&dir).unwrap();
-        assert_eq!(context_limit(&settings), 50_000);
-        assert!(settings.ai.is_none());
-        std::fs::remove_dir_all(&dir).unwrap();
+
+        choose_ollama(&dir, &service, "gemma4:12b").unwrap();
+        assert_eq!(limit(), 131_072);
+        let range = fill(t().ai_context_range, &[&8192, &131_072]);
+        let refused = |tokens| {
+            limit_context(&dir, Some(tokens), &service)
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(refused(8191), range);
+        assert_eq!(refused(131_073), range);
+        limit_context(&dir, Some(16_384), &service).unwrap();
+        assert_eq!(limit(), 16_384);
+
+        set_custom(&dir, Some("cat")).unwrap();
+        assert_eq!(limit(), OWN_LIMIT);
+        assert_eq!(refused(4096), fill(t().ai_context_least, &[&8192]));
+        limit_context(&dir, Some(500_000), &service).unwrap();
+        assert_eq!(limit(), 500_000);
+        limit_context(&dir, None, &service).unwrap();
+        assert_eq!(limit(), OWN_LIMIT);
+
+        choose_ollama(&dir, &service, "gemma4:12b").unwrap();
+        assert_eq!(limit(), 16_384);
+        let saved = fs::read_to_string(dir.join(settings::SETTINGS_FILE)).unwrap();
+        assert!(saved.contains(r#""ollama gemma4:12b": 16384"#));
+        assert!(!saved.contains(r#""custom":"#));
+        let claude = Settings {
+            ai: Some(Ai::ClaudeCode),
+            ..settings::load(&dir).unwrap()
+        };
+        assert_eq!(
+            limit_at(&claude, &Chosen::Program(CLAUDE), &service).unwrap(),
+            CLAUDE_LIMIT
+        );
+        assert_eq!(room(CLAUDE_LIMIT), (200_000 - 2048) * 3);
+        assert_eq!(room(1000), 0);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -484,15 +588,22 @@ mod tests {
     #[test]
     fn the_program_gets_the_prompt_and_its_answer_is_trimmed() {
         assert_eq!(
-            ask(&ai("cat"), "\n  Hello, Jane.\n\n").unwrap(),
+            ask(&ai("cat"), "\n  Hello, Jane.\n\n", OWN_LIMIT).unwrap(),
             "Hello, Jane."
         );
-        let failed = ask(&ai("sh -c 'echo nope >&2; exit 3'"), "x").unwrap_err();
+        let failed = ask(&ai("sh -c 'echo nope >&2; exit 3'"), "x", OWN_LIMIT).unwrap_err();
         assert_eq!(failed.to_string(), fill(t().ai_failed, &[&"sh", &"nope"]));
-        assert_eq!(ask(&ai("true"), "x").unwrap_err().to_string(), t().ai_empty);
-        assert!(ask(&ai("/nonexistent/claude"), "x").is_err());
-        assert_eq!(ask(&ai("  "), "x").unwrap_err().to_string(), t().ai_none);
-        let slow = ask_within(&ai("sleep 5"), "x", Duration::from_millis(100)).unwrap_err();
+        assert_eq!(
+            ask(&ai("true"), "x", OWN_LIMIT).unwrap_err().to_string(),
+            t().ai_empty
+        );
+        assert!(ask(&ai("/nonexistent/claude"), "x", OWN_LIMIT).is_err());
+        assert_eq!(
+            ask(&ai("  "), "x", OWN_LIMIT).unwrap_err().to_string(),
+            t().ai_none
+        );
+        let slow =
+            ask_within(&ai("sleep 5"), "x", OWN_LIMIT, Duration::from_millis(100)).unwrap_err();
         assert_eq!(slow.to_string(), fill(t().ai_timeout, &[&0]));
     }
 

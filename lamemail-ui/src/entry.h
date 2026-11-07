@@ -122,8 +122,8 @@ struct AiSetup {
     QString ollama;
     QString custom;
     QList<AiProgram> programs;
-    int contextLimit = 0;
-    QVariantList contextLimits;
+    int contextDefault = 0;
+    int contextSet = 0;
 
     bool operator==(const AiSetup&) const = default;
 };

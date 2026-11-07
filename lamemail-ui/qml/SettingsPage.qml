@@ -523,21 +523,50 @@ View {
                         }
                     }
 
+                    SettingRow {
+                        id: contextWindow
+                        readonly property string saved: Ai.contextSet > 0 ? String(Ai.contextSet) : ""
+
+                        visible: Ai.ready
+                        title: Strings.contextWindow
+                        hint: Strings.contextWindowHint
+
+                        Row {
+                            spacing: 8
+
+                            Field {
+                                id: windowField
+                                implicitWidth: 120
+                                horizontalAlignment: TextInput.AlignHCenter
+                                text: contextWindow.saved
+                                placeholderText: Ai.contextDefault > 0 ? String(Ai.contextDefault) : ""
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: RegularExpressionValidator {
+                                    regularExpression: /[0-9]{0,9}/
+                                }
+                            }
+
+                            Pill {
+                                anchors.verticalCenter: windowField.verticalCenter
+                                visible: windowField.text !== contextWindow.saved
+                                text: Strings.save
+                                on: true
+                                onClicked: Ai.setContextLimit(windowField.text)
+                            }
+                        }
+
+                        Connections {
+                            target: Ai
+
+                            function onChanged() {
+                                windowField.text = contextWindow.saved
+                            }
+                        }
+                    }
+
                     SettingHeading {
                         title: Strings.context
                         hint: Strings.contextHint
-                    }
-
-                    SettingRow {
-                        title: Strings.contextLimit
-                        hint: Strings.contextLimitHint
-
-                        Choice {
-                            options: Ai.contextLimits
-                            labels: Ai.contextLimits.map((chars) => chars.toLocaleString(Qt.locale(), "f", 0))
-                            value: Ai.contextLimit
-                            onChosen: (value) => Ai.setContextLimit(value)
-                        }
                     }
 
                     Repeater {

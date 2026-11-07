@@ -26,8 +26,8 @@ pub struct Settings {
     pub ai: Option<Ai>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_command: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub context_limits: BTreeMap<String, u64>,
 }
 
 impl Default for Settings {
@@ -38,7 +38,7 @@ impl Default for Settings {
             kind_styles: BTreeMap::new(),
             ai: None,
             custom_command: None,
-            context_limit: None,
+            context_limits: BTreeMap::new(),
         }
     }
 }

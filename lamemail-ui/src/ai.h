@@ -18,8 +18,8 @@ class Ai : public QObject {
     Q_PROPERTY(QString custom READ custom NOTIFY changed)
     Q_PROPERTY(QVariantList programs READ programs NOTIFY changed)
     Q_PROPERTY(bool ready READ ready NOTIFY changed)
-    Q_PROPERTY(int contextLimit READ contextLimit NOTIFY changed)
-    Q_PROPERTY(QVariantList contextLimits READ contextLimits NOTIFY changed)
+    Q_PROPERTY(int contextDefault READ contextDefault NOTIFY changed)
+    Q_PROPERTY(int contextSet READ contextSet NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
 
 public:
@@ -31,14 +31,14 @@ public:
     QString custom() const { return m_setup.custom; }
     QVariantList programs() const;
     bool ready() const { return !m_setup.active.isEmpty(); }
-    int contextLimit() const { return m_setup.contextLimit; }
-    QVariantList contextLimits() const { return m_setup.contextLimits; }
+    int contextDefault() const { return m_setup.contextDefault; }
+    int contextSet() const { return m_setup.contextSet; }
     QString error() const { return m_error; }
 
     Q_INVOKABLE void reload();
     Q_INVOKABLE void choose(const QString& choice, const QString& value);
     Q_INVOKABLE void remove();
-    Q_INVOKABLE void setContextLimit(int chars);
+    Q_INVOKABLE void setContextLimit(const QString& tokens);
 
 signals:
     void changed();

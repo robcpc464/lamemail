@@ -1693,13 +1693,19 @@ exit "$(cat "$dir/code")"
         QVERIFY(read(log).contains("\nai\nset\ncustom\n--\ncat\n"));
 
         answer(
-            R"({"active":"custom","command":"cat","ollama":null,"custom":"cat","programs":[],"context_limit":50000,"context_limits":[10000,20000,50000,100000]})"
+            R"({"active":"custom","command":"cat","ollama":null,"custom":"cat","programs":[],"context_default":32768,"context_set":50000})"
             "\n");
-        ai.setContextLimit(50000);
-        QTRY_COMPARE(ai.contextLimit(), 50000);
-        QCOMPARE(ai.contextLimits().size(), 4);
-        QCOMPARE(ai.contextLimits().last().toInt(), 100000);
+        ai.setContextLimit(QStringLiteral(" 50000 "));
+        QTRY_COMPARE(ai.contextSet(), 50000);
+        QCOMPARE(ai.contextDefault(), 32768);
         QVERIFY(read(log).contains("\nai\ncontext-limit\n50000\n"));
+
+        answer(
+            R"({"active":"custom","command":"cat","ollama":null,"custom":"cat","programs":[],"context_default":32768,"context_set":null})"
+            "\n");
+        ai.setContextLimit(QString());
+        QTRY_COMPARE(ai.contextSet(), 0);
+        QVERIFY(read(log).contains("\nai\ncontext-limit\nstdin:"));
 
         answer(
             R"({"active":"ollama","command":null,"ollama":"gemma4:12b","custom":"cat","programs":[]})"
