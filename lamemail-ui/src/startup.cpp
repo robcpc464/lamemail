@@ -18,7 +18,7 @@ void identify()
     QGuiApplication::setOrganizationName(QStringLiteral("lamemail"));
     QGuiApplication::setApplicationName(QStringLiteral("lamemail-ui"));
     QGuiApplication::setDesktopFileName(QStringLiteral("lamemail-ui"));
-    QGuiApplication::setApplicationVersion(QStringLiteral("0.10.1"));
+    QGuiApplication::setApplicationVersion(QStringLiteral("0.10.2"));
 }
 
 QCommandLineOption dirOption()

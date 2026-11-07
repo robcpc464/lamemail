@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.10.2
 
 - The AI gets as much as its model takes: Claude Code 200,000 tokens,
   an ollama model its own context window, in place of 20,000 characters
