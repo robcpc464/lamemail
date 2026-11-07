@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.11.0
 
 - lamemail can be your mail program: a `mailto:` link, in the browser
   or anywhere else, opens a new mail with its recipients, subject and
