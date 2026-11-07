@@ -130,6 +130,12 @@ JSON output.
 | `Ctrl+,` | settings |
 | `Ctrl+Q` | quit |
 
+To open mail links in lamemail, make it your mail program:
+
+```sh
+xdg-mime default lamemail-ui.desktop x-scheme-handler/mailto
+```
+
 The [UI README](lamemail-ui/README.md) says how to build it and where it
 keeps its files.
 

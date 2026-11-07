@@ -2,6 +2,14 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- lamemail can be your mail program: a `mailto:` link, in the browser
+  or anywhere else, opens a new mail with its recipients, subject and
+  text. Make lamemail the default with `xdg-mime default
+  lamemail-ui.desktop x-scheme-handler/mailto`. Links in a mail take
+  their subject and text along as well.
+
 ## 0.10.2
 
 - The AI gets as much as its model takes: Claude Code 200,000 tokens,

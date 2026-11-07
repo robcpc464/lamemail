@@ -490,10 +490,51 @@ exit "$(cat "$dir/code")"
         QVERIFY(
             QDesktopServices::openUrl(QUrl(QStringLiteral("mailto:anna.m%C3%BCller@example.de"))));
         QCOMPARE(requested.count(), 1);
-        QCOMPARE(requested.takeFirst().constFirst().toString(),
-            QStringLiteral("anna.müller@example.de"));
+        const QVariantMap mail = requested.takeFirst().constFirst().toMap();
+        QCOMPARE(mail.value(QStringLiteral("people")).toList(),
+            QVariantList({ QVariantMap { { QStringLiteral("name"), QString() },
+                { QStringLiteral("address"), QStringLiteral("anna.müller@example.de") },
+                { QStringLiteral("kind"), QStringLiteral("to") } } }));
+        QCOMPARE(mail.value(QStringLiteral("subject")).toString(), QString());
         mailto.open(QUrl(QStringLiteral("mailto:")));
-        QCOMPARE(requested.count(), 0);
+        QCOMPARE(requested.count(), 1);
+        QVERIFY(requested.takeFirst()
+                .constFirst()
+                .toMap()
+                .value(QStringLiteral("people"))
+                .toList()
+                .isEmpty());
+    }
+
+    void mailtoLinksCarryRecipientsSubjectAndBody()
+    {
+        const QVariantMap mail = Mailto().parse(
+            QUrl(QStringLiteral("mailto:jane@example.com,%22Tom%20Doe%22%20%3Ctom@example.com%3E"
+                                "?CC=anna@example.com&bcc=me@example.com&to=paul@example.com"
+                                "&subject=Hi%20%26%20bye+x&body=Line%20one%0D%0ALine%20two")));
+        QStringList people;
+        for (const QVariant& person : mail.value(QStringLiteral("people")).toList()) {
+            const QVariantMap map = person.toMap();
+            people << map.value(QStringLiteral("kind")).toString() + QLatin1Char(' ')
+                    + map.value(QStringLiteral("name")).toString() + QLatin1Char('|')
+                    + map.value(QStringLiteral("address")).toString();
+        }
+        QCOMPARE(people,
+            QStringList({ QStringLiteral("to |jane@example.com"),
+                QStringLiteral("to Tom Doe|tom@example.com"),
+                QStringLiteral("cc |anna@example.com"), QStringLiteral("bcc |me@example.com"),
+                QStringLiteral("to |paul@example.com") }));
+        QCOMPARE(mail.value(QStringLiteral("subject")).toString(), QStringLiteral("Hi & bye+x"));
+        QCOMPARE(
+            mail.value(QStringLiteral("body")).toString(), QStringLiteral("Line one\nLine two"));
+    }
+
+    void mailtoArgumentsBecomeOneEncodedLine()
+    {
+        QCOMPARE(Mailto::link(QStringLiteral(" MAILTO:jane@example.com?body=a\nb c ")),
+            QStringLiteral("mailto:jane@example.com?body=a%0Ab%20c"));
+        QCOMPARE(Mailto::link(QStringLiteral("inbox/2026-11-07_0805-offer-1.json")), QString());
+        QCOMPARE(Mailto::link(QStringLiteral("https://example.com")), QString());
     }
 
     void displayNamesPreferTheName()

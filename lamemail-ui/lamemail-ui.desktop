@@ -2,8 +2,9 @@
 Type=Application
 Name=lamemail
 Comment=One feed of all your mail
-Exec=lamemail-ui
+Exec=lamemail-ui %u
 Icon=lamemail
 Terminal=false
 Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;
 StartupWMClass=lamemail-ui

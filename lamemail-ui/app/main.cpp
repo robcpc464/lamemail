@@ -1,5 +1,6 @@
 #include "instance.h"
 #include "lamemail.h"
+#include "mailto.h"
 #include "preferences.h"
 #include "startup.h"
 
@@ -29,11 +30,18 @@ int main(int argc, char* argv[])
         QStringLiteral("Open a message, its path as `lamemail list --json` prints it"),
         QStringLiteral("PATH"));
     parser.addOptions({ dir, hidden, message });
+    parser.addPositionalArgument(QStringLiteral("link"),
+        QStringLiteral("A mailto: link to write a new mail to, as the desktop hands it"),
+        QStringLiteral("[mailto:…]"));
     parser.process(app);
     lamemail::setDir(lamemail::syncDir(parser.value(dir)));
+    const QStringList links = parser.positionalArguments();
+    const QString target = parser.isSet(message) ? parser.value(message)
+        : links.isEmpty()                        ? QString()
+                                                 : Mailto::link(links.constFirst());
 
     Instance instance(lamemail::dir());
-    if (instance.handOver(token, parser.value(message)))
+    if (instance.handOver(token, target))
         return 0;
 
     const QString image = qEnvironmentVariable("APPIMAGE");
@@ -46,7 +54,7 @@ int main(int argc, char* argv[])
             + QStringLiteral("/autostart/lamemail-ui.desktop"));
 
     QQmlApplicationEngine engine;
-    QQuickWindow* window = lamemail::open(engine, parser.isSet(hidden) && !parser.isSet(message));
+    QQuickWindow* window = lamemail::open(engine, parser.isSet(hidden) && target.isEmpty());
     if (!window)
         return 1;
     instance.listen();
@@ -56,7 +64,7 @@ int main(int argc, char* argv[])
                 qputenv("XDG_ACTIVATION_TOKEN", handed);
             lamemail::reveal(window, path);
         });
-    if (parser.isSet(message))
-        lamemail::reveal(window, parser.value(message));
+    if (!target.isEmpty())
+        lamemail::reveal(window, target);
     return QGuiApplication::exec();
 }

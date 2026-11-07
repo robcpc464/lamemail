@@ -58,15 +58,17 @@ Window {
             root.present()
     }
 
-    function writeTo(address) {
-        composePage.writeTo(address, mailPage.account)
+    function write(mail, account) {
+        composePage.write(mail, account)
         root.enter("compose")
     }
 
-    function reveal(path) {
+    function reveal(target) {
         root.present()
-        if (path.length > 0)
-            root.showMail(path)
+        if (target.startsWith("mailto:"))
+            root.write(mailto.parse(target), "")
+        else if (target.length > 0)
+            root.showMail(target)
     }
 
     function showMail(path) {
@@ -351,7 +353,8 @@ Window {
     }
 
     Mailto {
-        onRequested: (address) => root.writeTo(address)
+        id: mailto
+        onRequested: (mail) => root.write(mail, mailPage.account)
     }
 
     Notifier {

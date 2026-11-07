@@ -21,7 +21,10 @@ View {
     Contacts {
         id: contacts
         chosen: composer.people.map(person => person.address)
-        onModelReset: Qt.callLater(page.toFirstContact)
+        onModelReset: {
+            page.follow()
+            Qt.callLater(page.toFirstContact)
+        }
     }
 
     Accounts {
@@ -49,10 +52,15 @@ View {
             page.add(contact, cc)
     }
 
-    function writeTo(address, account) {
+    function write(mail, account) {
         if (!page.accountChosen && composer.people.length === 0 && accounts.ids.includes(account))
             page.use(account)
-        page.add({ name: "", address: address }, false)
+        for (const person of mail.people)
+            composer.add(person, person.kind)
+        if (composer.subject.trim().length === 0)
+            composer.subject = mail.subject
+        if (composer.text.trim().length === 0)
+            composer.text = mail.body
     }
 
     function pickCurrent(cc) {
