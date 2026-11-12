@@ -203,6 +203,7 @@ struct Texts {
     const char* contextWindowHint;
     const char* checkMail;
     const char* checkMailHint;
+    const char* checkingMail;
     const char* suspectedSpam;
     const char* suspectedPhishing;
     const char* suspectedFraud;
@@ -372,6 +373,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString contextWindowHint READ contextWindowHint CONSTANT)
     Q_PROPERTY(QString checkMail READ checkMail CONSTANT)
     Q_PROPERTY(QString checkMailHint READ checkMailHint CONSTANT)
+    Q_PROPERTY(QString checkingMail READ checkingMail CONSTANT)
     Q_PROPERTY(QString suspectedSpam READ suspectedSpam CONSTANT)
     Q_PROPERTY(QString suspectedPhishing READ suspectedPhishing CONSTANT)
     Q_PROPERTY(QString suspectedFraud READ suspectedFraud CONSTANT)
@@ -591,6 +593,7 @@ public:
     QString contextWindowHint() const { return QString::fromUtf8(texts().contextWindowHint); }
     QString checkMail() const { return QString::fromUtf8(texts().checkMail); }
     QString checkMailHint() const { return QString::fromUtf8(texts().checkMailHint); }
+    QString checkingMail() const { return QString::fromUtf8(texts().checkingMail); }
     QString suspectedSpam() const { return QString::fromUtf8(texts().suspectedSpam); }
     QString suspectedPhishing() const { return QString::fromUtf8(texts().suspectedPhishing); }
     QString suspectedFraud() const { return QString::fromUtf8(texts().suspectedFraud); }

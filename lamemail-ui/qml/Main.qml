@@ -72,8 +72,9 @@ Window {
     }
 
     function showMail(path) {
+        const unread = !feed.seen(path)
         feed.markSeen(path, true)
-        mailPage.show(path)
+        mailPage.show(path, unread)
         root.enter("mail")
     }
 

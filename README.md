@@ -24,6 +24,9 @@
 - **AI writing.** `/ai` and what you want to say, in a reply or a new
   mail. The model drafts it from the message, your history with these
   people and your own notes.
+- **AI check.** Switch it on and the model judges a mail you open
+  unread: spam, phishing, fraud or malware, with the reason from its
+  headers and its text.
 - **Your model.** Ollama on your machine, or any program you like. Off
   until you switch it on.
 - **Open to agents.** An MCP server lets AI agents read mail and write

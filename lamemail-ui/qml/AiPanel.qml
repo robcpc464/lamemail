@@ -57,12 +57,8 @@ Rectangle {
                 size: 14
                 color: Theme.accent
 
-                SequentialAnimation on opacity {
+                Pulse on opacity {
                     running: panel.running
-                    loops: Animation.Infinite
-                    alwaysRunToEnd: true
-                    NumberAnimation { from: 1; to: 0.3; duration: 700; easing.type: Easing.InOutSine }
-                    NumberAnimation { from: 0.3; to: 1; duration: 700; easing.type: Easing.InOutSine }
                 }
             }
 

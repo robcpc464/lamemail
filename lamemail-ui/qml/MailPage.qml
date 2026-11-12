@@ -18,6 +18,7 @@ View {
     property bool stale: false
     property string inlineShownFor
     property var verdicts: ({})
+    property var fresh: ({})
     property var suspicion: null
     readonly property bool checking: active && Preferences.checkMail && Ai.ready
     readonly property var ownAttachments: mail.attachments.filter(item => !item.inline)
@@ -70,7 +71,7 @@ View {
         const judged = page.checking && ["inbox", "junk"].includes(mail.kind)
         const known = page.verdicts[mail.path]
         page.suspicion = judged && known || null
-        if (!judged || known !== undefined)
+        if (!judged || known !== undefined || !page.fresh[mail.path])
             return
         page.verdicts[mail.path] = false
         checker.check(mail.path)
@@ -139,8 +140,10 @@ View {
         return ((page.forwarding ? "Fwd: " : "Re: ") + rest).trim()
     }
 
-    function show(path) {
+    function show(path, unread) {
         const draft = page.drafts[path]
+        if (unread)
+            page.fresh[path] = true
         page.stale = false
         mail.open(path)
         page.seen = true
@@ -505,6 +508,30 @@ View {
                     danger: true
                     tip: Strings.deleteTip
                     onClicked: page.deleteRequested(mail.path)
+                }
+            }
+
+            Icon {
+                id: sparkle
+                anchors.right: parent.right
+                anchors.rightMargin: 24
+                anchors.verticalCenter: parent.verticalCenter
+                visible: checker.pending.includes(mail.path)
+                name: "sparkles"
+                size: 18
+                color: Theme.accent
+
+                Pulse on opacity {
+                    running: sparkle.visible
+                }
+
+                HoverHandler {
+                    id: checkingHover
+                }
+
+                Tip {
+                    visible: checkingHover.hovered
+                    text: Strings.checkingMail
                 }
             }
         }

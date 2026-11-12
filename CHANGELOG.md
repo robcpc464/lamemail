@@ -13,10 +13,11 @@ What changed in each version of lamemail, newest first.
   way the mail took, the reply address) as well as the text and its
   links, and says in a few sentences what gives the mail away.
 - "Check mails" in the settings' AI section, off until you switch it
-  on: a mail you open from the inbox or the junk folder is judged by the
-  AI, and when it looks like spam, phishing, fraud or malware a note
-  over the mail says why, with "Delete" and "Read". Every mail opened
-  this way goes to the AI.
+  on: an unread mail you open from the inbox or the junk folder is
+  judged by the AI, and when it looks like spam, phishing, fraud or
+  malware a note over the mail says why, with "Delete" and "Read". A
+  sparkle pulses under the mail while the AI checks. Every mail opened
+  this way goes to the AI; mail you have read is not sent.
 - Claude Code and ollama models get lamemail's rules as their system
   prompt and the mails apart from them as data, so a mail that tries to
   give the AI instructions has a harder time, and no mail can end the

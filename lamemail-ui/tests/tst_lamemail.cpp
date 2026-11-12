@@ -826,7 +826,10 @@ exit "$(cat "$dir/code")"
         write(sleep, "0.3");
         auto awake = qScopeGuard([&] { QFile::remove(sleep); });
 
+        QVERIFY(!feed.seen(path));
+        QVERIFY(!feed.seen(QStringLiteral("work/inbox/unlisted-9.json")));
         feed.markSeen(path, true);
+        QVERIFY(feed.seen(path));
         QVERIFY(feed.data(feed.index(0), Feed::SeenRole).toBool());
         QCOMPARE(feed.unread(), 0);
         load(feed);
@@ -1940,7 +1943,9 @@ exit "$(cat "$dir/code")"
         checker.check(third);
         QCOMPARE(dropped.count(), 1);
         QCOMPARE(dropped.first().first().toString(), second);
+        QCOMPARE(checker.pending(), (QStringList { first, third }));
         QTRY_COMPARE(checked.count(), 2);
+        QVERIFY(checker.pending().isEmpty());
         QCOMPARE(checked[0][0].toString(), first);
         QCOMPARE(checked[0].mid(1),
             (QVariantList {

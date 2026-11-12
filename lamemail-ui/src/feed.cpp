@@ -243,6 +243,12 @@ void Feed::move(const QString& path, const QString& folder)
     enqueue({ path, { QStringLiteral("move"), QStringLiteral("--json"), path, folder } });
 }
 
+bool Feed::seen(const QString& path) const
+{
+    const qsizetype at = indexOf(path, 0);
+    return at < qsizetype(m_rows.size()) && m_rows[at].entry.flags.seen;
+}
+
 QString Feed::subject(const QString& path) const
 {
     const qsizetype at = indexOf(path, 0);
