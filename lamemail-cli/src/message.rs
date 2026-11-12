@@ -38,6 +38,8 @@ pub struct MailFile {
     pub body: String,
     pub body_source: BodySource,
     pub attachments: Vec<Attachment>,
+    #[serde(default)]
+    pub headers: String,
 }
 
 pub const FORWARDED: &str = "$Forwarded";
@@ -126,13 +128,38 @@ pub fn convert(raw: &[u8], meta: Meta<'_>) -> MailFile {
         body: String::new(),
         body_source: BodySource::None,
         attachments: Vec::new(),
+        headers: String::new(),
     };
     if let Some(message) = parsed {
+        file.headers = header_block(&message);
         fill_headers(&mut file, &message);
         fill_body(&mut file, &message);
         fill_attachments(&mut file, &message);
     }
     file
+}
+
+fn header_block(message: &Message<'_>) -> String {
+    let block = message
+        .parts
+        .first()
+        .and_then(|root| {
+            message
+                .raw_message
+                .get(root.offset_header as usize..root.offset_body as usize)
+        })
+        .unwrap_or_default();
+    String::from_utf8_lossy(block)
+        .lines()
+        .map(|line| {
+            line.chars()
+                .filter(|c| *c == '\t' || !c.is_control())
+                .collect()
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
 }
 
 fn fill_headers(file: &mut MailFile, message: &Message<'_>) {
@@ -366,6 +393,41 @@ mod tests {
         );
         assert_eq!(file.body_source, BodySource::Text);
         assert!(file.attachments.is_empty());
+        assert!(
+            file.headers
+                .starts_with("From: Jane Doe <jane@example.com>\nTo: ")
+        );
+        assert!(file.headers.ends_with("\nContent-Transfer-Encoding: 8bit"));
+    }
+
+    #[test]
+    fn the_header_block_is_kept_as_delivered_without_control_characters() {
+        let raw = b"Received: from mx.example.net (mx.example.net [192.0.2.7])\r\n\
+                    \tby mail.example.com; Tue, 15 Sep 2026 14:32:03 +0200\r\n\
+                    Authentication-Results: mail.example.com;\r\n spf=fail smtp.mailfrom=example.org\r\n\
+                    Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\
+                    X-Odd: a\x1b[31mb\xff\r\n\
+                    Received: from sender.example.org\r\n\
+                    \r\n\
+                    Received: no header, the text\r\n";
+        let file = convert(raw, meta());
+        assert_eq!(
+            file.headers,
+            "Received: from mx.example.net (mx.example.net [192.0.2.7])\n\
+             \tby mail.example.com; Tue, 15 Sep 2026 14:32:03 +0200\n\
+             Authentication-Results: mail.example.com;\n spf=fail smtp.mailfrom=example.org\n\
+             Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\n\
+             X-Odd: a[31mb\u{fffd}\n\
+             Received: from sender.example.org"
+        );
+        assert_eq!(file.subject, "Grüße");
+        let old: MailFile = serde_json::from_str(
+            &serde_json::to_string(&file)
+                .unwrap()
+                .replace(",\"headers\":", ",\"unknown\":"),
+        )
+        .unwrap();
+        assert_eq!(old.headers, "");
     }
 
     #[test]

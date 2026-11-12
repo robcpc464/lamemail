@@ -557,6 +557,12 @@ mod tests {
         assert_eq!(files.keys().copied().collect::<Vec<_>>(), vec![2]);
         let flags = store::read_flags(&files[&2]).unwrap();
         assert!(flags.seen && flags.flagged);
+        assert!(
+            store::read::<MailFile>(&files[&2])
+                .unwrap()
+                .headers
+                .starts_with("From: Jane Doe <jane@example.com>\n")
+        );
         assert!(!dir.join("private/entwürfe").exists());
 
         let mut stale: MailFile = store::read(&files[&2]).unwrap();

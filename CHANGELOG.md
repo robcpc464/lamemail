@@ -2,6 +2,13 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- A message file keeps the whole header block of its mail (`headers`),
+  such as the `Received` lines and `Authentication-Results`, so nothing
+  of a mail's origin is lost. Mail synced before gets it once the sync
+  folder is built again.
+
 ## 0.11.0
 
 - lamemail can be your mail program: a `mailto:` link, in the browser

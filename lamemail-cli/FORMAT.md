@@ -1165,7 +1165,8 @@ secret-tool clear application lamemail account private
   "subject": "Offer for project",
   "body": "Hi,\n\nplease find the offer attached.\n\nJane\n",
   "body_source": "text",
-  "attachments": [{ "index": 0, "name": "offer.pdf", "type": "application/pdf", "size": 120394, "inline": false }]
+  "attachments": [{ "index": 0, "name": "offer.pdf", "type": "application/pdf", "size": 120394, "inline": false }],
+  "headers": "Return-Path: <jane@example.com>\nReceived: from mx.example.net\n\tby mail.example.com; …\nFrom: Jane Doe <jane@example.com>\n…"
 }
 ```
 
@@ -1258,6 +1259,14 @@ secret-tool clear application lamemail account private
   `index`; `inline` is true for a part whose `Content-ID` the mail's HTML
   shows as `cid:` (logos, icons, pictures in the text), false otherwise
   and in files written before it existed
+- `headers` is the whole header block of the message as the server
+  delivered it, every line in its order with its folding and its encoded
+  words, so what the fields above leave out stays (`Received`,
+  `Authentication-Results`, `Return-Path`, `List-Unsubscribe`, the sending
+  program): line endings normalised to `\n`, without the blank line that
+  ends it, bytes that are not UTF-8 replaced, control characters but the
+  tab dropped. Empty in files written before it existed, until the sync
+  folder is built again
 
 ### Sync algorithm
 

@@ -115,6 +115,6 @@ lamemail push
         └── 2025/              server folders become subdirectories
 ```
 
-Each message is one JSON file: headers, flags, the text and the list of
-attachments. Messages are printed in English, or in German when the
-locale starts with `de`.
+Each message is one JSON file: the headers and their whole block, flags,
+the text and the list of attachments. Messages are printed in English, or
+in German when the locale starts with `de`.
