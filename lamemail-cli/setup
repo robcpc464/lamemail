@@ -18,7 +18,7 @@ sha256sum --check --quiet rustup-init.sha256
 chmod +x rustup-init
 
 ./rustup-init -y --no-modify-path --profile minimal \
-  --default-toolchain "$VERSION" -c clippy -c rustfmt
+  --default-toolchain "$VERSION" -c clippy -c rustfmt -c rust-src
 
 rm rustup-init rustup-init.sha256
 "$ROOT/cargo" --version
