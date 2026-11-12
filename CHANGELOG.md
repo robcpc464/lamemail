@@ -2,22 +2,22 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.12.0
 
-- A message file keeps the whole header block of its mail (`headers`),
-  such as the `Received` lines and `Authentication-Results`, so nothing
-  of a mail's origin is lost. Mail synced before gets it once the sync
-  folder is built again.
-- `lamemail ai check <path>` has the AI judge a mail for spam, phishing,
-  fraud and malware: it reads the header lines (SPF, DKIM, DMARC, the
-  way the mail took, the reply address) as well as the text and its
-  links, and says in a few sentences what gives the mail away.
 - "Check mails" in the settings' AI section, off until you switch it
   on: an unread mail you open from the inbox or the junk folder is
   judged by the AI, and when it looks like spam, phishing, fraud or
   malware a note over the mail says why, with "Delete" and "Read". A
   sparkle pulses under the mail while the AI checks. Every mail opened
   this way goes to the AI; mail you have read is not sent.
+- `lamemail ai check <path>` has the AI judge a mail for spam, phishing,
+  fraud and malware: it reads the header lines (SPF, DKIM, DMARC, the
+  way the mail took, the reply address) as well as the text and its
+  links, and says in a few sentences what gives the mail away.
+- A message file keeps the whole header block of its mail (`headers`),
+  such as the `Received` lines and `Authentication-Results`, so nothing
+  of a mail's origin is lost. Mail synced before gets it once the sync
+  folder is built again.
 - Claude Code and ollama models get lamemail's rules as their system
   prompt and the mails apart from them as data, so a mail that tries to
   give the AI instructions has a harder time, and no mail can end the
