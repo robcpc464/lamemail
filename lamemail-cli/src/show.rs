@@ -44,6 +44,8 @@ pub struct Message {
     pub answer_to: Vec<Addr>,
     pub answer_cc: Vec<Addr>,
     pub attachments: Vec<Attachment>,
+    #[serde(skip)]
+    pub headers: String,
 }
 
 #[derive(Serialize)]
@@ -178,6 +180,7 @@ pub fn message(file: MailFile, located: Located, mine: &BTreeSet<String>) -> Mes
         body: file.body,
         body_source: file.body_source,
         attachments: file.attachments,
+        headers: file.headers,
     }
 }
 

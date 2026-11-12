@@ -253,8 +253,19 @@ Example Shop GmbH, Musterstra&szlig;e 1, 20095 Hamburg</p></td></tr>
 """
 
 
-def mail(days, clock, sender, to, subject, text, cc=(), reply=None, att=(), seen=True, flagged=False, folder=None, ago=None, html=False, also=(), shown=()):
-    return dict(days=days, clock=clock, sender=sender, to=to, subject=subject, text=text, cc=cc, reply=reply, att=att, seen=seen, flagged=flagged, folder=folder, ago=ago, html=html, also=also, shown=shown)
+def mail(days, clock, sender, to, subject, text, cc=(), reply=None, att=(), seen=True, flagged=False, folder=None, ago=None, html=False, also=(), shown=(), route=None):
+    return dict(days=days, clock=clock, sender=sender, to=to, subject=subject, text=text, cc=cc, reply=reply, att=att, seen=seen, flagged=flagged, folder=folder, ago=ago, html=html, also=also, shown=shown, route=route or {})
+
+
+FORGED = dict(host="srv17.bulk-host.example.org", envelope="bounce@billing-check.example.net", reply_to="support@billing-check.example.net", checks="fail")
+PHISHING = """<html><body>
+<p>Dear customer,</p>
+<p>your last payment for Cloud Hosting was declined. To keep your servers running, confirm your payment details within 24 hours:</p>
+<p><a href="http://cloud.example.com.billing-check.example.net/login?id=robin">https://cloud.example.com/billing</a></p>
+<p>Otherwise your account and all of its data will be deleted.</p>
+<p>Cloud Billing Team</p>
+</body></html>
+"""
 
 
 RELEASE = """Hallo Robin,
@@ -347,6 +358,7 @@ PRIVATE = [
     [
         mail(2, "03:14", "billing", ["me"], "Your invoice for September is available", "Invoice 2026-09 for your cloud account is attached. The amount of EUR 12.40 will be charged on 2026-10-01.\n", att=[INVOICE]),
         mail(33, "03:14", "billing", ["me"], "Your invoice for August is available", "Invoice 2026-08 for your cloud account is attached. The amount of EUR 11.90 will be charged on 2026-09-01.\n", att=[("invoice-2026-08.pdf", "application/pdf", 83900)]),
+        mail(1, "07:41", "billing", ["me"], "Action required: your payment method was declined", "", html=PHISHING, seen=False, route=FORGED),
     ],
     [
         mail(1, "08:00", "calendar", ["me"], "Einladung: Sprint Review", "Donnerstag, 10:00 bis 11:00\nRaum Berlin\n\nOrganisator: Maria Vogel\n", att=[("invite.ics", "text/calendar", 2210)]),
@@ -493,8 +505,23 @@ def build(account, steps, uid):
     return written, uid
 
 
+def delivered(out, account, route, when, sender):
+    domain = sender.split("@")[1]
+    host = route.get("host", f"mail.{domain}")
+    envelope = route.get("envelope", sender)
+    checks = route.get("checks", "pass")
+    server = "mx." + ACCOUNTS[account]["address"].split("@")[1]
+    out["Return-Path"] = f"<{envelope}>"
+    out["Received"] = f"from {host} ({host} [192.0.2.{sum(host.encode()) % 250 + 1}]) by {server} with ESMTPS for <{ACCOUNTS[account]['address']}>; {email.utils.format_datetime(when)}"
+    out["Authentication-Results"] = f"{server}; spf={checks} smtp.mailfrom={envelope}; dkim={'pass' if checks == 'pass' else 'none'} header.d={domain}; dmarc={checks} header.from={domain}"
+    if "reply_to" in route:
+        out["Reply-To"] = route["reply_to"]
+
+
 def compose(account, step, when, msg, previous):
     out = email.message.EmailMessage()
+    if step["sender"] not in ("me", "post"):
+        delivered(out, account, step["route"], when, msg["from"][0]["address"])
     out["From"] = mailbox(msg["from"][0])
     out["To"] = ", ".join(mailbox(addr(account, key)) for key in step["to"])
     if step["cc"]:

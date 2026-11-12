@@ -81,7 +81,8 @@ lamemail ai set ollama <model>                     or a model of the local ollam
 lamemail ai set custom [<command>]                 or a program of your own, run without a shell
 lamemail ai show [--json]                          the AI set, and the known programs and ollama models
 lamemail ai remove                                 no mail goes to an AI any more
-lamemail ai context-limit <chars>                  how much of the context folder the AI gets: 10000, 20000, 50000 or 100000
+lamemail ai context-limit [<tokens>]               the context window of the AI that is on, the model's own unless set
+lamemail ai check <path> [--json]                  is the mail spam, phishing, fraud or malware, by its headers and text
 lamemail ai suggest [<id>] [--reply <path>] [--to <address>...] [--cc <address>...] [--subject <text>]
                    [--before <text>] [--after <text>] [--no-questions] [--json]
                                                    the whole text of a new mail or a reply drafted or revised by the AI,

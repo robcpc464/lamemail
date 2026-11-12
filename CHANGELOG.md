@@ -8,6 +8,10 @@ What changed in each version of lamemail, newest first.
   such as the `Received` lines and `Authentication-Results`, so nothing
   of a mail's origin is lost. Mail synced before gets it once the sync
   folder is built again.
+- `lamemail ai check <path>` has the AI judge a mail for spam, phishing,
+  fraud and malware: it reads the header lines (SPF, DKIM, DMARC, the
+  way the mail took, the reply address) as well as the text and its
+  links, and says in a few sentences what gives the mail away.
 
 ## 0.11.0
 

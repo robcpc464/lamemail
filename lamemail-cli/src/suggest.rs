@@ -6,13 +6,14 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+use crate::ai::{self, cut};
 use crate::i18n::{fill, t};
 use crate::kind::{self, Kind};
 use crate::message::{Addr, MailFile};
 use crate::settings::Settings;
 use crate::show::{self, Message};
 use crate::thread::{self, Entry};
-use crate::{ai, compose, list, output, reply, send, settings};
+use crate::{compose, list, output, reply, send, settings};
 
 const MAIL_CHARS: usize = 12_000;
 const HISTORY_CHARS: usize = 24_000;
@@ -649,13 +650,6 @@ fn data(text: &str) -> String {
         .replace("</file>", "</ file>")
 }
 
-fn cut(text: &str, limit: usize) -> String {
-    match text.char_indices().nth(limit) {
-        Some((at, _)) => format!("{} […]", &text[..at]),
-        None => text.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -1058,11 +1052,5 @@ mod tests {
         assert_eq!(question("Hi Jane,\nquestion: who?"), None);
         assert_eq!(question("question:  "), None);
         assert_eq!(question("Note: none"), None);
-    }
-
-    #[test]
-    fn a_long_mail_is_cut_at_a_character() {
-        assert_eq!(cut("äöü", 2), "äö […]");
-        assert_eq!(cut("äöü", 3), "äöü");
     }
 }

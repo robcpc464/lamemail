@@ -395,7 +395,7 @@ fn subject_of(choice: &Choice) -> Option<String> {
         .map(|subject| clean(Some(subject)).unwrap_or_default())
 }
 
-fn clean(text: Option<&str>) -> Option<String> {
+pub fn clean(text: Option<&str>) -> Option<String> {
     let text: String = text?
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })

@@ -177,6 +177,13 @@ pub fn room(limit: u64) -> usize {
     (limit.saturating_sub(ANSWER_TOKENS) * CHARS_PER_TOKEN) as usize
 }
 
+pub fn cut(text: &str, limit: usize) -> String {
+    match text.char_indices().nth(limit) {
+        Some((at, _)) => format!("{} […]", &text[..at]),
+        None => text.to_string(),
+    }
+}
+
 pub fn set_context_limit(dir: &Path, tokens: Option<u64>) -> Result<()> {
     limit_context(dir, tokens, ollama::ADDRESS)
 }
@@ -561,6 +568,12 @@ mod tests {
         assert_eq!(room(CLAUDE_LIMIT), (200_000 - 2048) * 3);
         assert_eq!(room(1000), 0);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_long_text_is_cut_at_a_character() {
+        assert_eq!(cut("äöü", 2), "äö […]");
+        assert_eq!(cut("äöü", 3), "äöü");
     }
 
     #[test]

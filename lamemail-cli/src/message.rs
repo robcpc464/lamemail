@@ -254,7 +254,7 @@ fn fill_attachments(file: &mut MailFile, message: &Message<'_>) {
         .enumerate()
         .map(|(index, part)| Attachment {
             index: u32::try_from(index).unwrap_or(u32::MAX),
-            name: part.attachment_name().map(str::to_string),
+            name: part.attachment_name().map(one_line),
             content_type: part
                 .content_type()
                 .map(|ct| match &ct.c_subtype {
@@ -520,12 +520,23 @@ mod tests {
     }
 
     #[test]
-    fn control_characters_leave_subjects_and_names() {
+    fn control_characters_leave_subjects_and_names_of_people_and_attachments() {
         let raw = "From: =?UTF-8?Q?Jane=09Doe?= <jane@example.com>\r\n\
                    Subject: =?UTF-8?Q?Invoice_ready=0D=0A?=\r\n\r\nHi\r\n";
         let file = convert(raw.as_bytes(), meta());
         assert_eq!(file.subject, "Invoice ready");
         assert_eq!(file.from[0].name.as_deref(), Some("Jane Doe"));
+
+        let attached = "Subject: Files\r\nContent-Type: multipart/mixed; boundary=\"b\"\r\n\r\n\
+                        --b\r\nContent-Type: text/plain\r\n\r\nHi\r\n\
+                        --b\r\nContent-Type: application/pdf\r\n\
+                        Content-Disposition: attachment; filename*=UTF-8''a%0A%0ASubject%3A%20b%1B.pdf\r\n\r\n\
+                        x\r\n--b--\r\n";
+        let file = convert(attached.as_bytes(), meta());
+        assert_eq!(
+            file.attachments[0].name.as_deref(),
+            Some("a  Subject: b .pdf")
+        );
     }
 
     #[test]

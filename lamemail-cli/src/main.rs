@@ -1,5 +1,6 @@
 mod ai;
 mod attachment;
+mod check;
 mod commands;
 mod compose;
 mod contacts;
@@ -260,7 +261,7 @@ enum Command {
         action: FolderCommand,
     },
     #[command(
-        about = "The AI that drafts text, Claude Code, a model of the local ollama service or a program of your own: choose it, and have it draft; suggest is the only command that hands mail to it"
+        about = "The AI that drafts and checks mail, Claude Code, a model of the local ollama service or a program of your own: choose it, have it draft a mail or check one; suggest and check are the only commands that hand mail to it"
     )]
     Ai {
         #[command(subcommand)]
@@ -477,6 +478,20 @@ enum AiCommand {
             help = "At least 8192 and at most what the model takes; left out, the model's own (Claude Code 200000, an ollama model its own, an own command 32768)"
         )]
         tokens: Option<u64>,
+    },
+    #[command(
+        about = "Check a mail with the AI that is set for signs of spam, phishing, fraud or malware, by its headers and its text: the verdict and the AI's reason go to stdout; nothing is noted or moved"
+    )]
+    Check {
+        #[arg(
+            help = "Message file, as printed by `lamemail list --json` (relative to the sync folder)"
+        )]
+        path: PathBuf,
+        #[arg(
+            long,
+            help = "One JSON object instead of text: the path, whether the headers were there, whether it is suspicious, the kind and the reason"
+        )]
+        json: bool,
     },
     #[command(
         about = "Draft or revise the text of a new mail or a reply with the AI that is set: the instruction comes from stdin, the whole text goes to stdout; nothing is noted or sent"
@@ -737,6 +752,7 @@ async fn run(cli: Cli) -> Result<()> {
             AiCommand::Show { json } => ai::show(&dir, json),
             AiCommand::Remove => ai::remove(&dir),
             AiCommand::ContextLimit { tokens } => ai::set_context_limit(&dir, tokens),
+            AiCommand::Check { path, json } => check::run(&dir, &path, json),
             AiCommand::Suggest {
                 id,
                 reply,
