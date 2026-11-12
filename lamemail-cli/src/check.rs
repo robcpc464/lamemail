@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::hash::{BuildHasher, Hasher, RandomState};
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -113,7 +112,13 @@ fn check(dir: &Path, path: &Path) -> Result<Checked> {
     let limit = ai::context_limit(&settings, &ai)?;
     let (message, me) = show::open(dir, &settings, path)?;
     let sender = sender(dir, &settings, &message, &me.addresses)?;
-    let prompt = prompt(&message, &me.addresses, sender, &mark(), ai::room(limit));
+    let prompt = prompt(
+        &message,
+        &me.addresses,
+        sender,
+        &ai::mark(),
+        ai::room(limit),
+    );
     let answer = ai::ask(&ai, &prompt, limit)?;
     let (kind, reason) = match verdict(&answer).context(t().ai_check_unclear)? {
         Verdict::Clean => (None, None),
@@ -126,10 +131,6 @@ fn check(dir: &Path, path: &Path) -> Result<Checked> {
         kind,
         reason,
     })
-}
-
-fn mark() -> String {
-    format!("{:08x}", RandomState::new().build_hasher().finish() as u32)
 }
 
 fn sender(

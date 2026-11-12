@@ -1000,6 +1000,13 @@ mail, followed by that quote and signature. The prompt holds:
   `<draft>` with `<here/>` at the place of the instruction, and the
   instruction
 
+The names of these blocks and of `<here/>` carry eight random
+hexadecimal digits, new for every run (`<mail-4297cbfd>`,
+`<here-4297cbfd/>`), as in `ai check`, so a mail, a file or a quote in
+the draft cannot write the end tag of its block. Their text goes into
+the prompt as it is, since the AI may be asked to take it over into the
+mail.
+
 A new mail's prompt says "the mail" where a reply's says "the reply".
 
 The prompt and 2048 tokens for the answer fit the context window, at

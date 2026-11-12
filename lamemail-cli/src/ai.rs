@@ -1,4 +1,5 @@
 use std::ffi::{OsStr, OsString};
+use std::hash::{BuildHasher, Hasher, RandomState};
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -192,6 +193,10 @@ fn limit_at(settings: &Settings, chosen: &Chosen, ollama_address: &str) -> Resul
 
 pub fn room(limit: u64) -> usize {
     (limit.saturating_sub(ANSWER_TOKENS) * CHARS_PER_TOKEN) as usize
+}
+
+pub fn mark() -> String {
+    format!("{:08x}", RandomState::new().build_hasher().finish() as u32)
 }
 
 pub fn cut(text: &str, limit: usize) -> String {
@@ -603,6 +608,19 @@ mod tests {
     fn a_long_text_is_cut_at_a_character() {
         assert_eq!(cut("äöü", 2), "äö […]");
         assert_eq!(cut("äöü", 3), "äöü");
+    }
+
+    #[test]
+    fn a_mark_is_eight_hexadecimal_digits_and_new_every_time() {
+        let marks = [mark(), mark(), mark()];
+        assert!(marks.iter().all(|mark| mark.len() == 8));
+        assert!(
+            marks
+                .iter()
+                .flat_map(|mark| mark.chars())
+                .all(|c| c.is_ascii_hexdigit())
+        );
+        assert!(marks[0] != marks[1] || marks[1] != marks[2]);
     }
 
     #[test]
