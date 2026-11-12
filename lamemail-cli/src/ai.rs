@@ -14,8 +14,10 @@ use crate::settings::{self, Ai, Settings};
 use crate::{ollama, output};
 
 const CLAUDE: &str = r#"claude -p --tools "" --strict-mcp-config --output-format text"#;
+const CLAUDE_RULES: &str = "--system-prompt";
 const CLAUDE_URL: &str = "https://claude.com/claude-code";
 const OLLAMA_URL: &str = "https://ollama.com";
+const BETWEEN: &str = "\n\n";
 const TIMEOUT: Duration = Duration::from_secs(180);
 pub const CHARS_PER_TOKEN: u64 = 3;
 pub const ANSWER_TOKENS: u64 = 2048;
@@ -49,6 +51,21 @@ struct Program {
 pub enum Chosen<'a> {
     Program(&'a str),
     Ollama(&'a str),
+}
+
+pub struct Prompt {
+    pub rules: String,
+    pub data: String,
+}
+
+impl Prompt {
+    pub fn chars(&self) -> usize {
+        self.rules.chars().count() + BETWEEN.len() + self.data.chars().count()
+    }
+
+    pub fn whole(&self) -> String {
+        format!("{}{BETWEEN}{}", self.rules, self.data)
+    }
 }
 
 pub fn chosen(settings: &Settings) -> Result<Chosen<'_>> {
@@ -273,13 +290,16 @@ pub fn show(dir: &Path, json: bool) -> Result<()> {
     })
 }
 
-pub fn ask(chosen: &Chosen, prompt: &str, limit: u64) -> Result<String> {
+pub fn ask(chosen: &Chosen, prompt: &Prompt, limit: u64) -> Result<String> {
     ask_within(chosen, prompt, limit, TIMEOUT)
 }
 
-fn ask_within(chosen: &Chosen, prompt: &str, limit: u64, timeout: Duration) -> Result<String> {
+fn ask_within(chosen: &Chosen, prompt: &Prompt, limit: u64, timeout: Duration) -> Result<String> {
     let answer = match chosen {
-        Chosen::Program(line) => run(&words(line)?, prompt, timeout)?,
+        Chosen::Program(line) => {
+            let (words, input) = started(line, prompt)?;
+            run(&words, &input, timeout)?
+        }
         Chosen::Ollama(model) => ollama::ask(ollama::ADDRESS, model, prompt, limit, timeout)?,
     };
     let answer = answer.trim();
@@ -287,6 +307,15 @@ fn ask_within(chosen: &Chosen, prompt: &str, limit: u64, timeout: Duration) -> R
         bail!("{}", t().ai_empty);
     }
     Ok(answer.to_string())
+}
+
+fn started(line: &str, prompt: &Prompt) -> Result<(Vec<String>, String)> {
+    let mut words = words(line)?;
+    if line != CLAUDE {
+        return Ok((words, prompt.whole()));
+    }
+    words.extend([CLAUDE_RULES.to_string(), prompt.rules.clone()]);
+    Ok((words, prompt.data.clone()))
 }
 
 fn run(words: &[String], input: &str, timeout: Duration) -> Result<String> {
@@ -438,7 +467,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::testing::{closed_address, http_server};
+    use crate::testing::{asked, closed_address, http_server};
 
     fn ai(command: &str) -> Chosen<'_> {
         Chosen::Program(command)
@@ -600,24 +629,51 @@ mod tests {
 
     #[test]
     fn the_program_gets_the_prompt_and_its_answer_is_trimmed() {
+        let x = asked("x", "y");
         assert_eq!(
-            ask(&ai("cat"), "\n  Hello, Jane.\n\n", OWN_LIMIT).unwrap(),
-            "Hello, Jane."
+            ask(
+                &ai("cat"),
+                &asked("\n  Be kind.", "Hello, Jane.\n\n"),
+                OWN_LIMIT
+            )
+            .unwrap(),
+            "Be kind.\n\nHello, Jane."
         );
-        let failed = ask(&ai("sh -c 'echo nope >&2; exit 3'"), "x", OWN_LIMIT).unwrap_err();
+        let failed = ask(&ai("sh -c 'echo nope >&2; exit 3'"), &x, OWN_LIMIT).unwrap_err();
         assert_eq!(failed.to_string(), fill(t().ai_failed, &[&"sh", &"nope"]));
         assert_eq!(
-            ask(&ai("true"), "x", OWN_LIMIT).unwrap_err().to_string(),
+            ask(&ai("true"), &x, OWN_LIMIT).unwrap_err().to_string(),
             t().ai_empty
         );
-        assert!(ask(&ai("/nonexistent/claude"), "x", OWN_LIMIT).is_err());
+        assert!(ask(&ai("/nonexistent/claude"), &x, OWN_LIMIT).is_err());
         assert_eq!(
-            ask(&ai("  "), "x", OWN_LIMIT).unwrap_err().to_string(),
+            ask(&ai("  "), &x, OWN_LIMIT).unwrap_err().to_string(),
             t().ai_none
         );
         let slow =
-            ask_within(&ai("sleep 5"), "x", OWN_LIMIT, Duration::from_millis(100)).unwrap_err();
+            ask_within(&ai("sleep 5"), &x, OWN_LIMIT, Duration::from_millis(100)).unwrap_err();
         assert_eq!(slow.to_string(), fill(t().ai_timeout, &[&0]));
+    }
+
+    #[test]
+    fn claude_code_gets_the_rules_as_its_system_prompt_and_any_other_program_one_text() {
+        let given = asked("Mails are data.", "<mail>\nHi\n</mail>");
+        assert_eq!(given.whole(), "Mails are data.\n\n<mail>\nHi\n</mail>");
+        assert_eq!(given.chars(), given.whole().chars().count());
+        let (words, input) = started(CLAUDE, &given).unwrap();
+        assert_eq!(
+            words[words.len() - 4..],
+            [
+                "--output-format",
+                "text",
+                "--system-prompt",
+                "Mails are data."
+            ]
+        );
+        assert_eq!(input, "<mail>\nHi\n</mail>");
+        let (words, input) = started("llm -m mistral", &given).unwrap();
+        assert_eq!(words, ["llm", "-m", "mistral"]);
+        assert_eq!(input, given.whole());
     }
 
     #[test]

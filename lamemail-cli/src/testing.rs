@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
+use crate::ai::Prompt;
 use crate::journal::{self, Pushed};
 use crate::kind::{Assigned, Kind};
 use crate::server::{Access, Server};
@@ -207,6 +208,13 @@ pub fn http_server(
         }
     });
     (address, received)
+}
+
+pub fn asked(rules: &str, data: &str) -> Prompt {
+    Prompt {
+        rules: rules.to_string(),
+        data: data.to_string(),
+    }
 }
 
 pub fn closed_address() -> String {

@@ -820,6 +820,17 @@ of the ollama service on this computer, which lamemail asks over its
 HTTP API. Mail goes to it only when a command asks for it; nothing is
 sent in the background.
 
+A prompt has two parts, lamemail's rules for the task and the data to
+work on (the mails, the context files, the draft, the user's
+instruction). Where the AI knows roles they go apart, so a mail has a
+harder time passing for an instruction: Claude Code gets the rules as
+its system prompt (`--system-prompt`, in place of its own, which is
+about writing code) and the data on stdin, an ollama model the rules as
+the `system` message and the data as the `user` message. A program of
+your own has stdin alone and gets both there, the rules first and a
+blank line between. The rules hold nothing of the user's mail or
+addresses, so nothing personal stands in a command line.
+
 ```sh
 lamemail ai set claude-code
 lamemail ai set ollama gemma4:12b
@@ -835,7 +846,8 @@ lamemail ai context-limit
   at a time, `ai remove` switches it off
 - `ai set claude-code` keeps `"ai": "claude-code"`: lamemail runs `claude
   -p --tools "" --strict-mcp-config --output-format text`, its own line,
-  so a later version may improve it; `claude` must be in the `PATH`
+  so a later version may improve it, with `--system-prompt` and the
+  rules of the request after it; `claude` must be in the `PATH`
 - `ai set custom <command>` keeps a program of your own and switches it
   on: the line, one argument quoted as in a shell, goes into
   `custom_command` and `"ai": "custom"`. It is split into words as a

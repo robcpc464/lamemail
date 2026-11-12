@@ -12,6 +12,10 @@ What changed in each version of lamemail, newest first.
   fraud and malware: it reads the header lines (SPF, DKIM, DMARC, the
   way the mail took, the reply address) as well as the text and its
   links, and says in a few sentences what gives the mail away.
+- Claude Code and ollama models get lamemail's rules as their system
+  prompt and the mails apart from them as data, so a mail that tries to
+  give the AI instructions has a harder time. Claude Code no longer
+  answers as a coding assistant when it drafts a mail.
 
 ## 0.11.0
 

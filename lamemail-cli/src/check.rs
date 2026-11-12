@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::ai::{self, cut};
+use crate::ai::{self, Prompt, cut};
 use crate::i18n::{fill, t};
 use crate::kind::Kind;
 use crate::message::Addr;
@@ -170,8 +170,8 @@ fn prompt(
     sender: Sender,
     mark: &str,
     room: usize,
-) -> String {
-    let frame = drawn(message, mine, sender, mark, "", "").chars().count() + CUT_MARKS;
+) -> Prompt {
+    let frame = drawn(message, mine, sender, mark, "", "").chars() + CUT_MARKS;
     let left = room.saturating_sub(frame);
     let text = defused(message.body.trim());
     let wanted = text.chars().count().min(TEXT_CHARS) + CUT_MARKS;
@@ -193,18 +193,18 @@ fn drawn(
     mark: &str,
     headers: &str,
     text: &str,
-) -> String {
+) -> Prompt {
     let today = jiff::Zoned::now().date().to_string();
-    let mut prompt = RULES
+    let rules = RULES
         .replace("{today}", &today)
         .replace("{mark}", mark)
-        .replace("{language}", t().ai_language)
-        + "\n\n";
+        .replace("{language}", t().ai_language);
+    let mut data = String::new();
     if !mine.is_empty() {
         let mine: Vec<&str> = mine.iter().map(String::as_str).collect();
-        prompt += &line("The user's own addresses", &mine.join(", "));
+        data += &line("The user's own addresses", &mine.join(", "));
     }
-    prompt += match sender {
+    data += match sender {
         Sender::Own => "The mail shows one of the user's own addresses in its From.\n",
         Sender::Written => {
             "The user has written to the address in its From before; that speaks for the mail only where the checks in the headers show that it comes from that address.\n"
@@ -212,31 +212,31 @@ fn drawn(
         Sender::Unknown => "The user has never written to the address in its From.\n",
     };
     if message.kind == Some(Kind::Junk) {
-        prompt += "The mail lies in the user's junk folder.\n";
+        data += "The mail lies in the user's junk folder.\n";
     }
     if message.headers.is_empty() {
-        prompt += "The header lines of this mail are not available: judge by the rest.\n";
+        data += "The header lines of this mail are not available: judge by the rest.\n";
     } else {
-        prompt += &format!(
+        data += &format!(
             "\nThe header lines of the mail as the user's mail server delivered them:\n\
              <headers-{mark}>\n{headers}\n</headers-{mark}>\n"
         );
     }
-    prompt += &format!(
+    data += &format!(
         "\nThe mail, its addresses and subject decoded:\n<mail-{mark} received=\"{}\">\n",
         message.received
     );
-    prompt += &line("From", &show::people(&message.from));
+    data += &line("From", &show::people(&message.from));
     for (label, people) in [
         ("Reply-To", &message.reply_to),
         ("To", &message.to),
         ("Cc", &message.cc),
     ] {
         if !people.is_empty() {
-            prompt += &line(label, &show::people(people));
+            data += &line(label, &show::people(people));
         }
     }
-    prompt += &line("Subject", &message.subject);
+    data += &line("Subject", &message.subject);
     if !message.attachments.is_empty() {
         let mut named: Vec<String> = message
             .attachments
@@ -255,9 +255,10 @@ fn drawn(
         if more > 0 {
             named.push(format!("and {more} more"));
         }
-        prompt += &line("Attachments", &named.join(", "));
+        data += &line("Attachments", &named.join(", "));
     }
-    prompt + &format!("\n{text}\n</mail-{mark}>\n\n{CLOSING}\n")
+    data += &format!("\n{text}\n</mail-{mark}>\n\n{CLOSING}\n");
+    Prompt { rules, data }
 }
 
 fn line(label: &str, value: &str) -> String {
@@ -462,17 +463,11 @@ mod tests {
         let path = store::relative(&files[&2], &dir);
         let (mut message, me) = show::open(&dir, &fixture.settings(), Path::new(&path)).unwrap();
         let size = |prompt: &str| prompt.chars().count();
-        let fitted =
-            |message: &Message, room| prompt(message, &me.addresses, Sender::Unknown, MARK, room);
+        let fitted = |message: &Message, room| {
+            prompt(message, &me.addresses, Sender::Unknown, MARK, room).whole()
+        };
         let frame = |message: &Message| {
-            size(&drawn(
-                message,
-                &me.addresses,
-                Sender::Unknown,
-                MARK,
-                "",
-                "",
-            ))
+            drawn(message, &me.addresses, Sender::Unknown, MARK, "", "").chars()
         };
         let headers_end = format!(" […]\n</headers-{MARK}>");
         let short_end = format!("\n\nShort.\n</mail-{MARK}>\n\n{CLOSING}\n");
@@ -486,6 +481,14 @@ mod tests {
         );
 
         let room = ai::room(ai::SMALLEST_LIMIT);
+        let apart = prompt(&message, &me.addresses, Sender::Unknown, MARK, room);
+        assert!(apart.rules.ends_with("Give no advice what to do."));
+        assert!(!apart.rules.contains("example.com"));
+        assert!(
+            apart
+                .data
+                .starts_with("The user's own addresses: me@example.com\n")
+        );
         let small = fitted(&message, room);
         assert!(size(&small) <= room && size(&small) > room - 100);
         assert!(small.contains(&headers_end));

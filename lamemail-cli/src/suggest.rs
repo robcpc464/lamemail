@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::ai::{self, cut};
+use crate::ai::{self, Prompt, cut};
 use crate::i18n::{fill, t};
 use crate::kind::{self, Kind};
 use crate::message::{Addr, MailFile};
@@ -99,7 +99,7 @@ struct Parts<'a> {
 }
 
 struct Drawn<'a> {
-    prompt: String,
+    prompt: Prompt,
     sizes: [usize; 4],
     earlier: Vec<&'a Message>,
     hits: Vec<(&'a Message, String)>,
@@ -239,7 +239,7 @@ fn suggest(dir: &Path, target: &Target, request: &Request, instruction: &str) ->
 impl<'a> Parts<'a> {
     fn fitted(&self, room: usize) -> Drawn<'a> {
         let drawn = self.drawn([MAIL_CHARS, HISTORY_CHARS, FOUND_CHARS, room]);
-        let length = drawn.prompt.chars().count();
+        let length = drawn.prompt.chars();
         let parts: usize = drawn.sizes.iter().sum();
         if length <= room || parts == 0 {
             return drawn;
@@ -376,14 +376,18 @@ fn searches(
     instruction: &str,
 ) -> Result<Vec<Vec<String>>> {
     let reply = noun(answered.is_some());
-    let mut prompt = worded(SEARCH, answered.is_some()) + "\n\n";
+    let mut given = String::new();
     if let Some(message) = answered {
-        prompt += "The mail to answer:\n";
-        prompt += &mail(message, &cut(&message.text, SEARCH_MAIL_CHARS));
-        prompt += "\n";
+        given += "The mail to answer:\n";
+        given += &mail(message, &cut(&message.text, SEARCH_MAIL_CHARS));
+        given += "\n";
     }
-    prompt += &subject_line(place.subject, reply);
-    prompt += &format!("The user's instruction for the {reply}:\n{instruction}\n");
+    given += &subject_line(place.subject, reply);
+    given += &format!("The user's instruction for the {reply}:\n{instruction}\n");
+    let prompt = Prompt {
+        rules: worded(SEARCH, answered.is_some()),
+        data: given,
+    };
     let answer = ai::ask(ai, &prompt, limit)?;
     Ok(answer
         .lines()
@@ -463,7 +467,7 @@ fn prompt(
     context: &[String],
     place: &Place,
     instruction: &str,
-) -> String {
+) -> Prompt {
     let answering = answered.is_some();
     let reply = noun(answering);
     let task = match (place.in_draft(), answering) {
@@ -476,58 +480,62 @@ fn prompt(
     } else {
         ASK
     };
-    let mut prompt = worded(&format!("{RULES}\n{task}\n{asking}\n\n"), answering);
+    let rules = worded(&format!("{RULES}\n{task}\n{asking}"), answering);
+    let mut given = String::new();
     if !context.is_empty() {
-        prompt += &format!(
+        given += &format!(
             "The user's own files about themselves and their work:\n<context>\n{}\n</context>\n\n",
             context.join("\n\n")
         );
     }
     if !earlier.is_empty() {
-        prompt += "The earlier mails with these people, oldest first:\n";
+        given += "The earlier mails with these people, oldest first:\n";
         earlier
             .iter()
-            .for_each(|other| prompt += &mail(other, &other.text));
-        prompt += "\n";
+            .for_each(|other| given += &mail(other, &other.text));
+        given += "\n";
     }
     if !hits.is_empty() {
-        prompt += "Mails a search found for the instruction, newest first:\n";
+        given += "Mails a search found for the instruction, newest first:\n";
         hits.iter()
-            .for_each(|(hit, text)| prompt += &mail(hit, text));
-        prompt += "\n";
+            .for_each(|(hit, text)| given += &mail(hit, text));
+        given += "\n";
     }
     if let Some((message, body)) = answered {
-        prompt += "The mail to answer:\n";
-        prompt += &mail(message, body);
-        prompt += "\n";
+        given += "The mail to answer:\n";
+        given += &mail(message, body);
+        given += "\n";
     }
     if let Some(from) = &place.from {
-        prompt += &format!(
+        given += &format!(
             "The {reply} is sent from: {}\n",
             show::people(std::slice::from_ref(from))
         );
     }
     if !place.to.is_empty() {
-        prompt += &format!("It goes to: {}\n", show::people(&place.to));
+        given += &format!("It goes to: {}\n", show::people(&place.to));
     }
     if !place.cc.is_empty() {
-        prompt += &format!("A copy goes to: {}\n", show::people(&place.cc));
+        given += &format!("A copy goes to: {}\n", show::people(&place.cc));
     }
-    prompt += &subject_line(place.subject, reply);
+    given += &subject_line(place.subject, reply);
     if place.in_draft() {
-        prompt += &format!(
+        given += &format!(
             "\nThe {reply} so far:\n<draft>\n{}<here/>{}\n</draft>\n",
             data(place.before),
             data(place.after)
         );
     }
     let instruction = instruction.trim();
-    prompt += &format!("\nThe user's instruction for the {reply}:\n");
-    prompt += match instruction {
+    given += &format!("\nThe user's instruction for the {reply}:\n");
+    given += match instruction {
         "" => "None, write what fits.",
         given => given,
     };
-    prompt + "\n"
+    Prompt {
+        rules,
+        data: given + "\n",
+    }
 }
 
 fn mail(message: &Message, text: &str) -> String {
