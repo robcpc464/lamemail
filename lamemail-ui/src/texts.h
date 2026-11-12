@@ -201,6 +201,16 @@ struct Texts {
     const char* contextChoose;
     const char* contextWindow;
     const char* contextWindowHint;
+    const char* checkMail;
+    const char* checkMailHint;
+    const char* suspectedSpam;
+    const char* suspectedPhishing;
+    const char* suspectedFraud;
+    const char* suspectedMalware;
+    const char* suspectedOther;
+    const char* aiAssessment;
+    const char* suspicionDelete;
+    const char* suspicionRead;
     const char* aiSection;
     const char* aiHint;
     const char* aiModel;
@@ -360,6 +370,16 @@ class Strings : public QObject {
     Q_PROPERTY(QString contextChoose READ contextChoose CONSTANT)
     Q_PROPERTY(QString contextWindow READ contextWindow CONSTANT)
     Q_PROPERTY(QString contextWindowHint READ contextWindowHint CONSTANT)
+    Q_PROPERTY(QString checkMail READ checkMail CONSTANT)
+    Q_PROPERTY(QString checkMailHint READ checkMailHint CONSTANT)
+    Q_PROPERTY(QString suspectedSpam READ suspectedSpam CONSTANT)
+    Q_PROPERTY(QString suspectedPhishing READ suspectedPhishing CONSTANT)
+    Q_PROPERTY(QString suspectedFraud READ suspectedFraud CONSTANT)
+    Q_PROPERTY(QString suspectedMalware READ suspectedMalware CONSTANT)
+    Q_PROPERTY(QString suspectedOther READ suspectedOther CONSTANT)
+    Q_PROPERTY(QString aiAssessment READ aiAssessment CONSTANT)
+    Q_PROPERTY(QString suspicionDelete READ suspicionDelete CONSTANT)
+    Q_PROPERTY(QString suspicionRead READ suspicionRead CONSTANT)
     Q_PROPERTY(QString aiSection READ aiSection CONSTANT)
     Q_PROPERTY(QString aiHint READ aiHint CONSTANT)
     Q_PROPERTY(QString aiModel READ aiModel CONSTANT)
@@ -569,6 +589,16 @@ public:
     QString contextChoose() const { return QString::fromUtf8(texts().contextChoose); }
     QString contextWindow() const { return QString::fromUtf8(texts().contextWindow); }
     QString contextWindowHint() const { return QString::fromUtf8(texts().contextWindowHint); }
+    QString checkMail() const { return QString::fromUtf8(texts().checkMail); }
+    QString checkMailHint() const { return QString::fromUtf8(texts().checkMailHint); }
+    QString suspectedSpam() const { return QString::fromUtf8(texts().suspectedSpam); }
+    QString suspectedPhishing() const { return QString::fromUtf8(texts().suspectedPhishing); }
+    QString suspectedFraud() const { return QString::fromUtf8(texts().suspectedFraud); }
+    QString suspectedMalware() const { return QString::fromUtf8(texts().suspectedMalware); }
+    QString suspectedOther() const { return QString::fromUtf8(texts().suspectedOther); }
+    QString aiAssessment() const { return QString::fromUtf8(texts().aiAssessment); }
+    QString suspicionDelete() const { return QString::fromUtf8(texts().suspicionDelete); }
+    QString suspicionRead() const { return QString::fromUtf8(texts().suspicionRead); }
     QString aiSection() const { return QString::fromUtf8(texts().aiSection); }
     QString aiHint() const { return QString::fromUtf8(texts().aiHint); }
     QString aiModel() const { return QString::fromUtf8(texts().aiModel); }

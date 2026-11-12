@@ -393,6 +393,24 @@ std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* er
     };
 }
 
+std::optional<Checked> checkedFromJson(const QByteArray& line, QString* error)
+{
+    const auto parsed = object(line, "path", error);
+    if (!parsed)
+        return std::nullopt;
+    const auto suspicious = maybeBool(*parsed, "suspicious");
+    if (!suspicious) {
+        if (error)
+            *error = QStringLiteral("missing field `suspicious`");
+        return std::nullopt;
+    }
+    return Checked {
+        .suspicious = *suspicious,
+        .kind = parsed->value(QLatin1String("kind")).toString(),
+        .reason = parsed->value(QLatin1String("reason")).toString(),
+    };
+}
+
 std::optional<Release> releaseFromJson(const QByteArray& line, QString* error)
 {
     const auto parsed = object(line, "latest", error);

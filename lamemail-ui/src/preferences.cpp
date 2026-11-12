@@ -19,6 +19,7 @@ const QString feedKindsKey = QStringLiteral("preferences/feedKinds");
 const QString shadowsKey = QStringLiteral("preferences/shadows");
 const QString notificationsKey = QStringLiteral("preferences/notifications");
 const QString checkUpdatesKey = QStringLiteral("preferences/checkUpdates");
+const QString checkMailKey = QStringLiteral("preferences/checkMail");
 const QString themeKey = QStringLiteral("preferences/theme");
 const QString downloadsKey = QStringLiteral("preferences/downloadFolder");
 constexpr int defaultWheelPixels = 120;
@@ -144,6 +145,16 @@ void Preferences::setCheckUpdates(bool on)
         return;
     QSettings().setValue(checkUpdatesKey, on);
     emit checkUpdatesChanged();
+}
+
+bool Preferences::checkMail() const { return QSettings().value(checkMailKey, false).toBool(); }
+
+void Preferences::setCheckMail(bool on)
+{
+    if (on == checkMail())
+        return;
+    QSettings().setValue(checkMailKey, on);
+    emit checkMailChanged();
 }
 
 QString Preferences::theme()

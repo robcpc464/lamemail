@@ -564,6 +564,19 @@ View {
                         }
                     }
 
+                    SettingRow {
+                        opacity: Ai.ready ? 1 : 0.5
+                        title: Strings.checkMail
+                        hint: Strings.checkMailHint
+
+                        Pill {
+                            enabled: Ai.ready || Preferences.checkMail
+                            text: Preferences.checkMail ? Strings.on : Strings.off
+                            on: Preferences.checkMail
+                            onClicked: Preferences.checkMail = !Preferences.checkMail
+                        }
+                    }
+
                     SettingHeading {
                         title: Strings.context
                         hint: Strings.contextHint

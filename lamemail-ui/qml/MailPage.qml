@@ -17,6 +17,9 @@ View {
     property bool noting: false
     property bool stale: false
     property string inlineShownFor
+    property var verdicts: ({})
+    property var suspicion: null
+    readonly property bool checking: active && Preferences.checkMail && Ai.ready
     readonly property var ownAttachments: mail.attachments.filter(item => !item.inline)
     readonly property var inlineAttachments: mail.attachments.filter(item => item.inline)
     readonly property bool inlineShown: page.inlineShownFor === mail.path
@@ -37,6 +40,7 @@ View {
     Mail {
         id: mail
         onChanged: {
+            page.inspect()
             if (page.filled || !page.loaded())
                 return
             page.filled = true
@@ -55,6 +59,30 @@ View {
     Accounts {
         id: accounts
     }
+
+    Checker {
+        id: checker
+        onChecked: (path, suspicious, kind, reason) => page.judge(path, suspicious && { kind: kind, reason: reason })
+        onDropped: (path) => delete page.verdicts[path]
+    }
+
+    function inspect() {
+        const judged = page.checking && ["inbox", "junk"].includes(mail.kind)
+        const known = page.verdicts[mail.path]
+        page.suspicion = judged && known || null
+        if (!judged || known !== undefined)
+            return
+        page.verdicts[mail.path] = false
+        checker.check(mail.path)
+    }
+
+    function judge(path, suspicion) {
+        page.verdicts[path] = suspicion
+        if (path === mail.path)
+            page.inspect()
+    }
+
+    onCheckingChanged: page.inspect()
 
     function loaded() {
         return mail.answerSubject.length > 0
@@ -479,6 +507,13 @@ View {
                     onClicked: page.deleteRequested(mail.path)
                 }
             }
+        }
+
+        Suspicion {
+            anchors.fill: parent
+            suspicion: page.suspicion
+            onDeleteRequested: page.moveRequested(mail.path, "trash")
+            onReadRequested: page.judge(mail.path, false)
         }
 
         second: Composer {

@@ -1,5 +1,6 @@
 #include "accounts.h"
 #include "ai.h"
+#include "checker.h"
 #include "contacts.h"
 #include "entry.h"
 #include "feed.h"
@@ -1919,6 +1920,70 @@ exit "$(cat "$dir/code")"
         QCOMPARE(suggested.count(), 2);
         QCOMPARE(failed.count(), 1);
         answer({ });
+    }
+
+    void checkerAsksForOneMailAtATimeAndKeepsOnlyTheLatestWaiting()
+    {
+        const QString first = QStringLiteral("work/inbox/a-1.json");
+        const QString second = QStringLiteral("work/inbox/b-2.json");
+        const QString third = QStringLiteral("work/inbox/c-3.json");
+        Checker checker;
+        QSignalSpy checked(&checker, &Checker::checked);
+        QSignalSpy dropped(&checker, &Checker::dropped);
+        answer(R"({"path":"work/inbox/a-1.json","headers":true,"suspicious":true,)"
+               R"("kind":"phishing","reason":"The link leads elsewhere."})"
+               "\n");
+        checker.check(first);
+        checker.check(first);
+        checker.check(second);
+        checker.check(third);
+        checker.check(third);
+        QCOMPARE(dropped.count(), 1);
+        QCOMPARE(dropped.first().first().toString(), second);
+        QTRY_COMPARE(checked.count(), 2);
+        QCOMPARE(checked[0][0].toString(), first);
+        QCOMPARE(checked[0].mid(1),
+            (QVariantList {
+                true, QStringLiteral("phishing"), QStringLiteral("The link leads elsewhere.") }));
+        QCOMPARE(checked[1][0].toString(), third);
+        QCOMPARE(read(m_fake.filePath(QStringLiteral("args"))),
+            "--dir\n" + lamemail::dir().toUtf8() + "\nai\ncheck\n--json\n--\n" + third.toUtf8()
+                + "\n");
+
+        answer(R"({"path":"work/inbox/a-1.json","headers":false,"suspicious":false})"
+               "\n");
+        checker.check(first);
+        QTRY_COMPARE(checked.count(), 3);
+        QCOMPARE(checked[2].mid(1), (QVariantList { false, QString(), QString() }));
+        answer(R"({"path":"work/inbox/a-1.json","suspicious":true})"
+               "\n");
+        checker.check(first);
+        QTRY_COMPARE(checked.count(), 4);
+        QCOMPARE(checked[3].mid(1), (QVariantList { true, QString(), QString() }));
+
+        answer({ }, 1, "lamemail: no AI is set up\n");
+        checker.check(first);
+        QTRY_COMPARE(dropped.count(), 2);
+        answer(R"({"path":"work/inbox/a-1.json","kind":"spam"})"
+               "\n");
+        checker.check(first);
+        QTRY_COMPARE(dropped.count(), 3);
+        QCOMPARE(dropped.last().first().toString(), first);
+        QCOMPARE(checked.count(), 4);
+        answer({ });
+    }
+
+    void checkingMailIsOffUntilSwitchedOn()
+    {
+        QTemporaryDir home;
+        const auto scope = ownSettings(home);
+        Preferences preferences;
+        QSignalSpy changed(&preferences, &Preferences::checkMailChanged);
+        QVERIFY(!preferences.checkMail());
+        preferences.setCheckMail(true);
+        preferences.setCheckMail(true);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(Preferences().checkMail());
     }
 
     void contactsListEveryoneAndFilterBySearch()

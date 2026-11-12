@@ -156,6 +156,12 @@ struct Suggestion {
     QList<UsedMail> earlier;
 };
 
+struct Checked {
+    bool suspicious = false;
+    QString kind;
+    QString reason;
+};
+
 struct SyncResult {
     QString account;
     int added = 0;
@@ -228,6 +234,7 @@ std::optional<Moved> movedFromJson(const QByteArray& line, QString* error = null
 std::optional<Contact> contactFromJson(const QByteArray& line, QString* error = nullptr);
 std::optional<AiSetup> aiSetupFromJson(const QByteArray& line, QString* error = nullptr);
 std::optional<Suggestion> suggestionFromJson(const QByteArray& line, QString* error = nullptr);
+std::optional<Checked> checkedFromJson(const QByteArray& line, QString* error = nullptr);
 std::optional<Release> releaseFromJson(const QByteArray& line, QString* error = nullptr);
 
 template <class T>
