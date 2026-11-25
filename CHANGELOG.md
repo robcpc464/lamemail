@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.13.0
 
 - With the junk folder chosen in the top bar, "Move junk to trash"
   moves all the spam shown into the trash at once, with undo.
