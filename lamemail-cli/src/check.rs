@@ -195,7 +195,7 @@ fn drawn(
     headers: &str,
     text: &str,
 ) -> Prompt {
-    let today = jiff::Zoned::now().date().to_string();
+    let today = jiff::ZonedDateTime::now().date().to_string();
     let rules = RULES
         .replace("{today}", &today)
         .replace("{mark}", mark)
@@ -361,7 +361,7 @@ mod tests {
         let prompt = fs::read_to_string(&seen).unwrap();
         let mark = marked(&prompt);
         assert!(mark.chars().all(|c| c.is_ascii_hexdigit()));
-        let today = jiff::Zoned::now().date();
+        let today = jiff::ZonedDateTime::now().date();
         assert!(prompt.starts_with("You check an e-mail the user of a mail client received"));
         assert!(prompt.contains(&format!("reads it. Today is {today}.\n")));
         assert!(prompt.contains(&format!("tell the user in {},", t().ai_language)));

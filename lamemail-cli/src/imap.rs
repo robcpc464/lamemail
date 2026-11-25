@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -6,7 +5,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_imap::extensions::idle::IdleResponse;
-use async_imap::imap_proto::{AttributeValue, MailboxDatum, Response, Status};
+use async_imap::imap_proto::{
+    AttributeValue, MailboxDatum, MailboxListData, Outcome, Response, Status,
+};
 use async_imap::types::{Flag, Mailbox, NameAttribute};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -122,8 +123,9 @@ pub async fn idle(mut session: Session, name: &str, limit: Duration) -> Result<(
 }
 
 fn server_words(info: &str) -> &str {
-    info.split_once("info: Some(\"")
-        .and_then(|(_, rest)| rest.strip_suffix("\")"))
+    let quoted = |start: &str, end: &str| info.split_once(start)?.1.strip_suffix(end);
+    quoted("information: Some(\"", "\") }")
+        .or_else(|| quoted("info: Some(\"", "\")"))
         .unwrap_or(info)
 }
 
@@ -145,26 +147,25 @@ async fn answered(
             Response::Done {
                 tag: done,
                 status,
-                information,
-                ..
+                outcome,
             } if *done == tag => {
                 return Ok(match status {
                     Status::Ok => None,
-                    _ => Some(words(information)),
+                    _ => Some(words(outcome)),
                 });
             }
             Response::Data {
                 status: Status::Bye,
-                information,
-                ..
-            } => bail!("{label}: {CLOSED}: {}", words(information)),
+                outcome,
+            } => bail!("{label}: {CLOSED}: {}", words(outcome)),
             other => each(other),
         }
     }
 }
 
-fn words(information: &Option<Cow<'_, str>>) -> String {
-    information
+fn words(outcome: &Outcome<'_>) -> String {
+    outcome
+        .information
         .as_deref()
         .unwrap_or("no reason given")
         .to_string()
@@ -208,11 +209,11 @@ pub async fn list_folders(session: &mut Session) -> Result<Vec<Folder>> {
 }
 
 fn folder_of(response: &Response<'_>) -> Option<Folder> {
-    let Response::MailboxData(MailboxDatum::List {
+    let Response::MailboxData(MailboxDatum::List(MailboxListData {
         name_attributes,
         delimiter,
         name,
-    }) = response
+    })) = response
     else {
         return None;
     };
@@ -623,6 +624,25 @@ mod tests {
         let mut session = logged_in(&[(command, "")]).await;
         let err = store(&mut session, &[4, 5], SEEN).await.unwrap_err();
         assert!(!err.is::<Refused>());
+    }
+
+    #[tokio::test]
+    async fn a_refused_login_gives_the_servers_words() {
+        let attempt = |reply: &'static str| async move {
+            let (client, server) = tokio::io::duplex(4096);
+            tokio::spawn(serve(server, vec![("LOGIN \"me\" \"secret\"", reply)]));
+            let logged_in = login(Box::new(KeptOpen(client)), "me", "secret").await;
+            logged_in.map(drop).unwrap_err()
+        };
+        let err = attempt("TAG NO Invalid credentials\r\n").await;
+        assert!(err.is::<CredentialError>());
+        assert_eq!(words(&err), "login as me failed: Invalid credentials");
+        let err = attempt("TAG NO [UNAVAILABLE] Try again later\r\n").await;
+        assert!(!err.is::<CredentialError>());
+        assert_eq!(
+            words(&err),
+            "login as me failed: [UNAVAILABLE] Try again later"
+        );
     }
 
     #[tokio::test]

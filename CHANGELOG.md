@@ -2,6 +2,10 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- Updated libraries: a mail server whose greeting or login answer holds characters such as a dash (–) no longer fails the login.
+
 ## 0.13.0
 
 - With the junk folder chosen in the top bar, "Move junk to trash" moves all the spam shown into the trash at once, with undo.

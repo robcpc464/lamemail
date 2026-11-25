@@ -628,7 +628,7 @@ mod tests {
         };
         let sent: Timestamp = "2026-09-15T14:32:00+02:00".parse().unwrap();
         let day = sent
-            .to_zoned(TimeZone::system())
+            .to_zoned_datetime(TimeZone::system())
             .strftime("%Y-%m-%d")
             .to_string();
         assert!(attribution.contains(&day), "{attribution}");

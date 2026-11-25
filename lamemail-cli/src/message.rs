@@ -170,7 +170,9 @@ fn fill_headers(file: &mut MailFile, message: &Message<'_>) {
         )
         .ok()?;
         let timestamp = Timestamp::from_second(d.to_timestamp()).ok()?;
-        Some(format_rfc3339(&timestamp.to_zoned(TimeZone::fixed(offset))))
+        Some(format_rfc3339(
+            &timestamp.to_zoned_datetime(TimeZone::fixed(offset)),
+        ))
     });
     file.message_id = message.message_id().map(str::to_string);
     file.in_reply_to = text_list(message.in_reply_to()).into_iter().next();
@@ -324,7 +326,7 @@ fn text_list(value: &HeaderValue<'_>) -> Vec<String> {
     }
 }
 
-pub fn format_rfc3339(zoned: &jiff::Zoned) -> String {
+pub fn format_rfc3339(zoned: &jiff::ZonedDateTime) -> String {
     zoned.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()
 }
 
@@ -336,10 +338,10 @@ pub fn minute(rfc3339: &str) -> String {
         .collect()
 }
 
-pub fn local_zoned(unix_seconds: i64) -> jiff::Zoned {
+pub fn local_zoned(unix_seconds: i64) -> jiff::ZonedDateTime {
     Timestamp::from_second(unix_seconds)
         .unwrap_or_default()
-        .to_zoned(TimeZone::system())
+        .to_zoned_datetime(TimeZone::system())
 }
 
 pub fn format_local(unix_seconds: i64) -> String {

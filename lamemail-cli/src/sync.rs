@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use serde::Serialize;
 
 use crate::i18n::{fill, t};
@@ -348,7 +348,7 @@ async fn sync_folder(
         }
     }
 
-    state.last_sync = Some(message::format_rfc3339(&Zoned::now()));
+    state.last_sync = Some(message::format_rfc3339(&ZonedDateTime::now()));
     store::write_state(folder_dir, &state)?;
     if progress {
         println!(

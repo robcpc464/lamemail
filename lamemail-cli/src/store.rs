@@ -25,11 +25,11 @@ pub struct FolderState {
     pub last_sync: Option<String>,
 }
 
-pub fn file_name(received: &jiff::Zoned, subject: &str, uid: u32) -> String {
+pub fn file_name(received: &jiff::ZonedDateTime, subject: &str, uid: u32) -> String {
     format!("{}-{}-{uid}.json", stamp(received), slug(subject))
 }
 
-pub fn stamp(received: &jiff::Zoned) -> String {
+pub fn stamp(received: &jiff::ZonedDateTime) -> String {
     received.strftime("%Y-%m-%d_%H%M").to_string()
 }
 
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn file_names_carry_time_slug_and_uid() {
-        let zoned: jiff::Zoned = "2026-09-15T14:32:05+02:00[+02:00]".parse().unwrap();
+        let zoned: jiff::ZonedDateTime = "2026-09-15T14:32:05+02:00[+02:00]".parse().unwrap();
         assert_eq!(
             file_name(&zoned, "Offer for project", 4711),
             "2026-09-15_1432-offer-for-project-4711.json"
