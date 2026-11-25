@@ -184,9 +184,10 @@ curl -fsSL https://raw.githubusercontent.com/robcpc464/lamemail/master/install.s
 ```
 
 It puts `lamemail` and `lamemail-ui` into `~/.local/bin` and adds the menu
-entry and icon. Run the same line again to update, or end it with
-`sh -s -- --uninstall` to remove lamemail. With an older Qt the command
-line still works, and the script says what is missing.
+entry and icon. Run the same line again to update (it closes a running
+lamemail-ui and starts it again), or end it with `sh -s -- --uninstall`
+to remove lamemail. With an older Qt the command line still works, and
+the script says what is missing.
 
 ### AppImage
 

@@ -8,6 +8,7 @@
 namespace {
 
 constexpr int waitMs = 1000;
+const QString quitRequest = QStringLiteral("lamemail:quit");
 
 QString socketPath(const QString& dir)
 {
@@ -32,8 +33,12 @@ Instance::Instance(const QString& dir, QObject* parent)
                 if (socket->peek(socket->bytesAvailable()).count('\n') < 2)
                     return;
                 const QByteArray token = socket->readLine().trimmed();
-                emit activated(token, QString::fromUtf8(socket->readLine().chopped(1)));
+                const QString target = QString::fromUtf8(socket->readLine().chopped(1));
                 socket->disconnectFromServer();
+                if (target == quitRequest)
+                    emit quitRequested();
+                else
+                    emit activated(token, target);
             });
         }
     });
@@ -48,6 +53,8 @@ bool Instance::handOver(const QByteArray& token, const QString& path)
     socket.write(token + '\n' + path.toUtf8() + '\n');
     return socket.waitForBytesWritten(waitMs);
 }
+
+bool Instance::requestQuit() { return handOver({ }, quitRequest); }
 
 bool Instance::listen()
 {

@@ -21,7 +21,6 @@ Window {
     property var deleted: []
     readonly property var deleting: (root.pending?.deleteForGood ? root.pending.paths : []).concat(root.deleted)
     property bool quitting: false
-    property bool exiting: false
     property bool unnoticed: false
     property var lastSync: null
     property var undoMoves: []
@@ -79,21 +78,8 @@ Window {
     }
 
     function quit() {
-        root.exiting = true
-        root.close()
-    }
-
-    onClosing: (close) => {
-        const hide = root.toTray && !root.exiting && !root.quitting
-        root.exiting = false
-        if (hide) {
-            close.accepted = false
-            root.hide()
-            return
-        }
         root.release()
         if ((sender.noting > 0 || journal.sending > 0) && !root.quitting) {
-            close.accepted = false
             root.quitting = true
             toast.show({ icon: "outbox", text: Strings.closingAfterSend })
             if (sender.noting === 0)
@@ -101,6 +87,14 @@ Window {
         } else {
             Qt.quit()
         }
+    }
+
+    onClosing: (close) => {
+        close.accepted = false
+        if (root.toTray && !root.quitting)
+            root.hide()
+        else
+            root.quit()
     }
 
     function quitWhenSent() {

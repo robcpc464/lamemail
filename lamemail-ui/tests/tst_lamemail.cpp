@@ -2436,7 +2436,7 @@ exit "$(cat "$dir/code")"
             QStringLiteral("\"/a b/\\\\$x\\\\\"y\" 50%%"));
     }
 
-    void instanceHandsTokenAndMailToTheOneOfTheSameFolder()
+    void instanceHandsTokenMailAndQuitToTheOneOfTheSameFolder()
     {
         QTemporaryDir runtime;
         const QByteArray realRuntime = qgetenv("XDG_RUNTIME_DIR");
@@ -2456,7 +2456,12 @@ exit "$(cat "$dir/code")"
         QVERIFY(activated.wait());
         QCOMPARE(activated.at(1).at(0).toByteArray(), QByteArray());
         QCOMPARE(activated.at(1).at(1).toString(), QString());
+        QSignalSpy quit(&first, &Instance::quitRequested);
+        QVERIFY(Instance(QStringLiteral("mail")).requestQuit());
+        QVERIFY(quit.wait());
+        QCOMPARE(activated.count(), 2);
         QVERIFY(!Instance(QStringLiteral("other")).handOver({ }, { }));
+        QVERIFY(!Instance(QStringLiteral("other")).requestQuit());
     }
 };
 

@@ -22,14 +22,15 @@ qmake6 -r ../lamemail-ui.pro && make -j"$(nproc)"
 ## Usage
 
 ```sh
-lamemail-ui [--dir <path>] [--hidden] [--open <path>]
+lamemail-ui [--dir <path>] [--hidden] [--open <path>] [--quit]
 ```
 
 `--dir` is the sync folder, as for `lamemail`. `--hidden` starts in the
 tray without a window while "Close to tray" is on; the start at login uses
 it. `--open` shows a mail, its path as `lamemail list --json` prints it,
 and the window even with `--hidden`. A second start on the same sync
-folder brings up the running window, with the mail of `--open`.
+folder brings up the running window, with the mail of `--open`. `--quit`
+closes the running one as `Ctrl+Q` does; the update uses it.
 
 ## Files
 

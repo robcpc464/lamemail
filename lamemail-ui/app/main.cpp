@@ -29,7 +29,11 @@ int main(int argc, char* argv[])
     const QCommandLineOption message(QStringLiteral("open"),
         QStringLiteral("Open a message, its path as `lamemail list --json` prints it"),
         QStringLiteral("PATH"));
-    parser.addOptions({ dir, hidden, message });
+    const QCommandLineOption quit(QStringLiteral("quit"),
+        QStringLiteral(
+            "Close the running lamemail-ui of the sync folder as Ctrl+Q does; exit code 1 "
+            "when none runs"));
+    parser.addOptions({ dir, hidden, message, quit });
     parser.addPositionalArgument(QStringLiteral("link"),
         QStringLiteral("A mailto: link to write a new mail to, as the desktop hands it"),
         QStringLiteral("[mailto:…]"));
@@ -41,6 +45,8 @@ int main(int argc, char* argv[])
                                                  : Mailto::link(links.constFirst());
 
     Instance instance(lamemail::dir());
+    if (parser.isSet(quit))
+        return instance.requestQuit() ? 0 : 1;
     if (instance.handOver(token, target))
         return 0;
 
@@ -64,6 +70,8 @@ int main(int argc, char* argv[])
                 qputenv("XDG_ACTIVATION_TOKEN", handed);
             lamemail::reveal(window, path);
         });
+    QObject::connect(&instance, &Instance::quitRequested, window,
+        [window] { QMetaObject::invokeMethod(window, "quit"); });
     if (!target.isEmpty())
         lamemail::reveal(window, target);
     return QGuiApplication::exec();

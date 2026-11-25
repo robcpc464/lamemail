@@ -2,6 +2,11 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- The update closes a running lamemail-ui by itself, the way Ctrl+Q does, and starts it again afterwards. It works from the next update on: the version you have now does not know how to be asked yet.
+- Quit in the tray menu now also works when the window was never opened, as after a start at login into the tray.
+
 ## 0.14.0
 
 - Updated libraries: a mail server whose greeting or login answer holds characters such as a dash (–) no longer fails the login.

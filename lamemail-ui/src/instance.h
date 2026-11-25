@@ -12,10 +12,12 @@ public:
     explicit Instance(const QString& dir, QObject* parent = nullptr);
 
     bool handOver(const QByteArray& token, const QString& path);
+    bool requestQuit();
     bool listen();
 
 signals:
     void activated(const QByteArray& token, const QString& path);
+    void quitRequested();
 
 private:
     QString m_name;
