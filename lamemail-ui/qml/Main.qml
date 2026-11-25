@@ -128,6 +128,10 @@ Window {
             root.hold({ paths: paths, deleteForGood: true }, "trash", Strings.emptyingTrash.replace("{}", paths.length))
     }
 
+    function moveJunkToTrash() {
+        feed.paths("junk").forEach(path => feed.move(path, "trash"))
+    }
+
     function hold(job, icon, text) {
         if (job.draftId?.length > 0 && root.pending?.draftId === job.draftId) {
             holdDelay.stop()
@@ -472,8 +476,10 @@ Window {
             anchors.right: parent.right
             searching: search.open
             filtering: !root.searching
-            trash: bar.kind === "trash" && !root.searching ? Math.max(0, feed.count - root.deleting.length) : 0
-            onEmptyTrashRequested: root.requestEmptyTrash()
+            clearable: root.searching ? 0
+                       : bar.kind === "trash" ? Math.max(0, feed.count - root.deleting.length)
+                       : bar.kind === "junk" ? feed.count : 0
+            onClearRequested: bar.kind === "junk" ? root.moveJunkToTrash() : root.requestEmptyTrash()
             onSearchRequested: {
                 if (search.open) {
                     search.hide()

@@ -12,12 +12,12 @@ Rectangle {
     property bool syncing: false
     property bool filtering: true
     property string kind
-    property int trash
+    property int clearable
     signal searchRequested()
     signal syncRequested()
     signal settingsRequested()
     signal composeRequested()
-    signal emptyTrashRequested()
+    signal clearRequested()
 
     Item {
         id: content
@@ -68,10 +68,11 @@ Rectangle {
             anchors.left: filters.right
             anchors.leftMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            visible: bar.trash > 0
+            visible: bar.clearable > 0
             spacing: 8
 
-            readonly property string label: Strings.emptyTrash.replace("{}", bar.trash)
+            readonly property string label: (bar.kind === "junk" ? Strings.junkToTrash : Strings.emptyTrash)
+                                            .replace("{}", bar.clearable)
             readonly property bool roomy: tools.x - emptying.x - divider.width - emptying.spacing - 16
                                           >= labelSize.advanceWidth + 20
 
@@ -88,11 +89,11 @@ Rectangle {
 
             Pill {
                 anchors.verticalCenter: parent.verticalCenter
-                text: emptying.roomy ? emptying.label : String(bar.trash)
+                text: emptying.roomy ? emptying.label : String(bar.clearable)
                 icon: emptying.roomy ? "" : "trash"
                 tip: emptying.roomy ? "" : emptying.label
                 danger: true
-                onClicked: bar.emptyTrashRequested()
+                onClicked: bar.clearRequested()
             }
         }
 

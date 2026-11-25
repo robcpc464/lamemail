@@ -2,6 +2,13 @@
 
 What changed in each version of lamemail, newest first.
 
+## Unreleased
+
+- With the junk folder chosen in the top bar, "Move junk to trash"
+  moves all the spam shown into the trash at once, with undo.
+- Moving spam from the junk folder into the trash no longer tells the
+  server it is not spam.
+
 ## 0.12.0
 
 - "Check mails" in the settings' AI section, off until you switch it

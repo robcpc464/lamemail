@@ -986,10 +986,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn moving_into_junk_and_out_again_marks_the_mail() {
+    async fn moving_into_junk_and_out_again_marks_the_mail_but_the_trash_is_no_verdict() {
         let fixture = Fixture::new("journal-junk");
         let (dir, server_dir) = (&fixture.dir, fixture.dev.join("private"));
         fixture.marked_folder("Junk", "junk");
+        fixture.marked_folder("Trash", "trash");
         fixture.sync().await;
         let inbox = store::index(&dir.join("private/inbox")).unwrap();
         let path = store::relative(&inbox[&1], dir);
@@ -1006,6 +1007,8 @@ mod tests {
         let junk = store::index(&dir.join("private/junk")).unwrap();
         let path = store::relative(&junk[&1], dir);
         assert!(store::read_flags(&dir.join(&path)).unwrap().has("$Junk"));
+        moving::run(dir, Path::new(&path), "trash", false).unwrap();
+        assert!(changes(dir).is_empty());
         moving::run(dir, Path::new(&path), "inbox", false).unwrap();
         fixture.push().await;
         assert!(server_dir.join("INBOX/1,S,$NotJunk.eml").is_file());

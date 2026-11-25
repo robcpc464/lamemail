@@ -666,11 +666,12 @@ target the settings do not synchronize is looked up the same way and
 only moved into, without a local folder. Any other target missing on
 the server, a folder of a year whose parent is not on the server or has
 no delimiter, and one the server refuses to create drop the move with
-the reason, and the message stays where it is. A move into a folder of the kind
-`junk` notes `junk` as well, a move out of one `notjunk`, so filters on
-the server learn from it; both count from where the message is on the
-server, so moving it back before the push (an undo) is no verdict and
-drops the pending one. With `--json` it prints one object:
+the reason, and the message stays where it is. A move into a folder of
+the kind `junk` notes `junk` as well, a move out of one `notjunk` unless
+it goes into the trash, so filters on the server learn from it; both
+count from where the message is on the server, so moving it back before
+the push (an undo) is no verdict and drops the pending one. With
+`--json` it prints one object:
 
 ```json
 {"path":"private/inbox/2026-09-15_1432-offer-for-project-4711.json","from":"inbox","folder":"trash","style":{"icon":"trash","dense":false,"dim":true,"strike":true,"italic":false,"indent":0,"color":"cyan"},"kind":"trash"}

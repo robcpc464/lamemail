@@ -37,6 +37,7 @@ struct Texts {
     const char* emptyKind;
     const char* kindOnly;
     const char* emptyTrash;
+    const char* junkToTrash;
     const char* noAccounts;
     const char* commands;
     const char* exitedWithCode;
@@ -296,6 +297,7 @@ class Strings : public QObject {
     Q_PROPERTY(QString emptyKind READ emptyKind CONSTANT)
     Q_PROPERTY(QString kindOnly READ kindOnly CONSTANT)
     Q_PROPERTY(QString emptyTrash READ emptyTrash CONSTANT)
+    Q_PROPERTY(QString junkToTrash READ junkToTrash CONSTANT)
     Q_PROPERTY(QString noAccounts READ noAccounts CONSTANT)
     Q_PROPERTY(QString commands READ commands CONSTANT)
     Q_PROPERTY(QString shortcuts READ shortcuts CONSTANT)
@@ -516,6 +518,7 @@ public:
     QString emptyKind() const { return QString::fromUtf8(texts().emptyKind); }
     QString kindOnly() const { return QString::fromUtf8(texts().kindOnly); }
     QString emptyTrash() const { return QString::fromUtf8(texts().emptyTrash); }
+    QString junkToTrash() const { return QString::fromUtf8(texts().junkToTrash); }
     QString noAccounts() const { return QString::fromUtf8(texts().noAccounts); }
     QString commands() const { return QString::fromUtf8(texts().commands); }
     QString shortcuts() const { return QString::fromUtf8(texts().shortcuts); }

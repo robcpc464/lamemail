@@ -74,15 +74,15 @@ pub fn run(dir: &Path, path: &Path, target: &str, json: bool) -> Result<()> {
         None => resolve(settings.account(id)?, target).with_context(|| missing(id, target))?,
     };
     let account = settings.account(id)?;
-    let junk = |folder: &str| account.kind_of(folder) == Some(Kind::Junk);
-    let verdict = match (junk(&folder), junk(&located.folder)) {
-        (true, false) => Some(Change::Junk),
-        (false, true) => Some(Change::NotJunk),
-        _ => None,
+    let kind = account.kind_of(&folder);
+    let from_junk = account.kind_of(&located.folder) == Some(Kind::Junk);
+    let verdict = match kind {
+        Some(Kind::Junk) => (!from_junk).then_some(Change::Junk),
+        Some(Kind::Trash) => None,
+        _ => from_junk.then_some(Change::NotJunk),
     };
     let wish = (folder != located.folder).then(|| folder.clone());
     journal::note_move(dir, &located.path, uidvalidity, verdict, wish)?;
-    let kind = account.kind_of(&folder);
     let moved = Moved {
         style: settings.style(kind),
         kind,
