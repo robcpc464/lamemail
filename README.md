@@ -255,9 +255,10 @@ Two projects, one repository, very few dependencies:
 ## Why "lamemail"?
 
 Because email is lame. Reading it is lame, writing it is lame, the
-clients are lame, and the protocol underneath is from 1986 and feels
-like it. lamemail does not pretend otherwise: it turns your mail into
-a folder of text files and lets an AI do the lame parts.
+clients are lame, and the protocol underneath is from 1986, one of the
+very few things from the eighties nobody is nostalgic about. lamemail
+does not pretend otherwise: it turns your mail into a folder of text
+files and lets an AI do the lame parts.
 
 Also, I am bad at naming things.
 
