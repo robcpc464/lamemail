@@ -2,7 +2,7 @@
 
 What changed in each version of lamemail, newest first.
 
-## Unreleased
+## 0.14.0
 
 - Updated libraries: a mail server whose greeting or login answer holds characters such as a dash (–) no longer fails the login.
 
